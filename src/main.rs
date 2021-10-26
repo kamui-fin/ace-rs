@@ -1,13 +1,16 @@
 mod config;
+mod dict;
 
 extern crate clap;
 
+use anyhow::{Result, bail};
 use clap::{App, Arg};
 use config::Config;
+use dict::DictConn;
 use genanki_rs::{Error, Note};
 use std::fs;
 
-fn main() {
+fn main() -> Result<()> {
     let matches = App::new("ace")
         .version("1.0")
         .author("Kamui")
@@ -22,7 +25,20 @@ fn main() {
         )
         .get_matches();
 
-    let config = matches.value_of("config").unwrap_or("config.sample.toml");
-    let conf_text = fs::read_to_string(config).unwrap();
-    let config: Config = toml::from_str(&conf_text).unwrap();
+    // Load configuration
+    // let config = matches.value_of("config").unwrap_or("config.sample.toml");
+    // let conf_text = fs::read_to_string(config).unwrap();
+    // let config: Config = toml::from_str(&conf_text).unwrap();
+
+    let conn = DictConn::new();
+    if let Ok(conn) = conn {
+        if conn.new {
+            let res = conn.setup_schema();
+            if res.is_err() {
+                bail!("Unable to setup database schema")
+            }
+        }
+    }
+
+    Ok(())
 }
