@@ -1,8 +1,7 @@
 mod config;
 mod deinflect;
 mod dict;
-
-extern crate clap;
+mod utils;
 
 use anyhow::{bail, Result};
 use clap::{App, Arg, SubCommand};
@@ -11,6 +10,7 @@ use dict::{lookup, DictConn, DictDb};
 use fs::read_to_string;
 use genanki_rs::{Error, Note};
 use std::{fs, path::Path};
+use utils::retrieve_audios;
 
 fn main() -> Result<()> {
     let matches = App::new("ace")
@@ -48,6 +48,8 @@ fn main() -> Result<()> {
         let dict_path = import_matches.value_of("DIR").unwrap();
         dictdb.load_yomichan_dict(Path::new(dict_path))?;
     }
+
+    let output_dir = Path::new("/home/kamui/dev/projects/ace-rs/data");
 
     Ok(())
 }
