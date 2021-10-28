@@ -1,13 +1,11 @@
 use anyhow::{anyhow, bail, Result};
 use directories::BaseDirs;
-use fs::read_to_string;
 use glob::glob;
-use rusqlite::{params, Connection, Transaction, TransactionBehavior};
+use rusqlite::{params, Connection, Transaction};
 use serde_derive::Deserialize;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{fs, path::Path};
+
+use crate::deinflect;
 
 #[derive(Debug)]
 pub struct DictConn {
@@ -52,8 +50,6 @@ pub struct DictDb {
     conn: DictConn,
 }
 
-pub fn deconjugate(reading: String, kanji: String) -> String {}
-
 impl DictDb {
     pub fn new() -> Result<Self> {
         let conn = DictConn::new()?;
@@ -68,7 +64,7 @@ impl DictDb {
 
     pub fn load_yomichan_dict(&mut self, path: &Path) -> Result<()> {
         if Self::validate_yomichan(path) {
-            // setup transaction for faster inserts
+            // setup transaction for faster writes
             let tx = self.conn.get_transaction()?;
 
             let dictmeta_text = std::fs::read_to_string(path.join("index.json"))?;
@@ -186,4 +182,18 @@ impl DictConn {
             ",
         )
     }
+}
+
+pub fn lookup(dict_db: DictDb, word: String) -> Result<Vec<DbDictEntry>> {
+    let mut results: Vec<DbDictEntry> = vec![];
+    let deinflect_json = include_str!("../data/deinflect.json");
+    let deinflector = deinflect::Deinflector::new(deinflect_json);
+    let deinflected_forms = deinflector.deinflect(word);
+
+    for form in deinflected_forms {
+        let lookup_res = dict_db.lookup_word(&form.term)?;
+        results.extend(lookup_res);
+    }
+
+    Ok(results)
 }

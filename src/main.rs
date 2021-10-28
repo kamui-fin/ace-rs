@@ -1,4 +1,5 @@
 mod config;
+mod deinflect;
 mod dict;
 
 extern crate clap;
@@ -6,7 +7,8 @@ extern crate clap;
 use anyhow::{bail, Result};
 use clap::{App, Arg, SubCommand};
 use config::Config;
-use dict::{DictConn, DictDb, deconjugate};
+use dict::{lookup, DictConn, DictDb};
+use fs::read_to_string;
 use genanki_rs::{Error, Note};
 use std::{fs, path::Path};
 
@@ -46,8 +48,6 @@ fn main() -> Result<()> {
         let dict_path = import_matches.value_of("DIR").unwrap();
         dictdb.load_yomichan_dict(Path::new(dict_path))?;
     }
-
-    deconjugate("-", kanji)
 
     Ok(())
 }

@@ -9,7 +9,6 @@ dependencies = [
  "directories",
  "genanki-rs",
  "glob",
- "jp_inflections",
  "rusqlite",
  "serde",
  "serde_derive",
@@ -342,12 +341,6 @@ name = "itoa"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b71991ff56294aa922b450139ee08b3bfc70982c6b2c7562771375cf73542dd4"
-
-[[package]]
-name = "jp_inflections"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f827a6a1495da6bea015e524b2b14ba7cc7fdd4d621df2a0569f73cc364bea19"
 
 [[package]]
 name = "lazy_static"
