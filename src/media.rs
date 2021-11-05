@@ -1,17 +1,17 @@
 use anyhow::Result;
-use json5;
 use regex::Regex;
 use scraper::{Html, Selector};
 use serde_json::Value;
-use std::{borrow::Borrow, io::Cursor, path::Path};
+use std::{io::Cursor, path::Path};
 use uuid::Uuid;
+
+use crate::anki::Media;
 
 fn with_uuid(prefix: String) -> String {
     let uuid = Uuid::new_v4().to_string();
     return format!("{}-{}", prefix, uuid);
 }
 
-#[tokio::main]
 pub async fn get_sent(word: &str) -> Result<String> {
     let base_url = String::from("https://massif.la/ja/search?q=");
     let resp = reqwest::get(base_url + word).await?;
@@ -48,8 +48,7 @@ async fn download_file(url: &str, output_path: &Path, extension: Option<&str>) -
     Ok(())
 }
 
-#[tokio::main]
-pub async fn forvo_dl(word: &str, output_dir: &Path, num: usize) -> Result<()> {
+pub async fn forvo(word: &str, num: usize) -> Result<Vec<Media>> {
     let url = format!("https://forvo.com/search/{}/", word);
 
     let content = reqwest::get(&url).await?.text().await?;
@@ -62,14 +61,16 @@ pub async fn forvo_dl(word: &str, output_dir: &Path, num: usize) -> Result<()> {
         pronunciations.push(code_sequence.to_string());
     }
 
-    for pronunciation in pronunciations[..num].to_vec() {
-        let dl_link =
-            String::from("https://forvo.com/player-mp3Handler.php?path=") + &pronunciation;
-        let output = output_dir.join(with_uuid(word.to_string()));
-        download_file(&dl_link, &output, Some("mp3")).await?;
-    }
+    let urls = pronunciations[..num]
+        .iter()
+        .map(|p| {
+            let url = String::from("https://forvo.com/player-mp3Handler.php?path=") + p;
+            let filename = with_uuid(word.to_string());
+            Media { url, filename }
+        })
+        .collect::<Vec<Media>>();
 
-    Ok(())
+    Ok(urls)
 }
 
 async fn get_fullres_urls(word: &str) -> Result<Vec<String>> {
@@ -103,13 +104,18 @@ async fn get_fullres_urls(word: &str) -> Result<Vec<String>> {
     return Ok(results);
 }
 
-#[tokio::main]
-pub async fn google_img(word: String, output_dir: &Path, num: usize) -> Result<()> {
+pub async fn google_img(word: String, num: usize) -> Result<Vec<Media>> {
     let urls = get_fullres_urls(&word).await?[..num].to_vec();
-    for url in urls.iter() {
-        let output = output_dir.join(with_uuid(word.clone()));
-        download_file(url, &output, None).await?;
-    }
+    let medias = urls
+        .iter()
+        .map(|url| {
+            let filename = with_uuid(word.clone());
+            Media {
+                url: url.to_string(),
+                filename,
+            }
+        })
+        .collect::<Vec<Media>>();
 
-    Ok(())
+    Ok(medias)
 }

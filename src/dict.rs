@@ -27,11 +27,11 @@ struct DbDictionary {
 
 #[derive(Debug)]
 pub struct DbDictEntry {
-    id: i64,
-    kanji: String,
-    reading: String,
-    meaning: String,
-    dict_id: i64,
+    pub id: i64,
+    pub kanji: String,
+    pub reading: String,
+    pub meaning: String,
+    pub dict_id: i64,
 }
 
 #[derive(Debug, Deserialize)]

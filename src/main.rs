@@ -1,18 +1,17 @@
+mod ace;
+mod anki;
 mod config;
 mod deinflect;
 mod dict;
-mod utils;
+mod media;
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use clap::{App, Arg, SubCommand};
-use config::Config;
-use dict::{lookup, DictConn, DictDb};
-use fs::read_to_string;
-use genanki_rs::{Error, Note};
-use std::{fs, path::Path};
-use utils::{forvo_dl, google_img};
+use dict::DictDb;
+use std::path::Path;
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let matches = App::new("ace")
         .version("1.0")
         .author("Kamui")
