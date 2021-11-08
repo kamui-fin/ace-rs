@@ -184,7 +184,7 @@ impl DictConn {
     }
 }
 
-pub fn lookup(dict_db: DictDb, word: String) -> Result<Vec<DbDictEntry>> {
+pub fn lookup(dict_db: &DictDb, word: String) -> Result<Vec<DbDictEntry>> {
     let mut results: Vec<DbDictEntry> = vec![];
     let deinflect_json = include_str!("../data/deinflect.json");
     let deinflector = deinflect::Deinflector::new(deinflect_json);

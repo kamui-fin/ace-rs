@@ -14,17 +14,19 @@ pub struct DeckModelInfo {
     pub audio_field: String,
 }
 
+#[derive(Debug)]
 pub struct Media {
     pub url: String,
     pub filename: String,
 }
 
-pub struct NoteData<'a> {
+#[derive(Debug)]
+pub struct NoteData {
     pub word: String,
     pub sentence: String,
     pub meaning: String,
-    pub image: &'a Media,
-    pub audio: &'a Media,
+    pub image: Media,
+    pub audio: Media,
 }
 
 #[derive(Deserialize, Debug)]
@@ -33,7 +35,7 @@ pub struct AddResult {
     error: String,
 }
 
-impl<'a> AnkiConnect {
+impl AnkiConnect {
     pub fn get_note_json(
         &self,
         deck_model_info: &DeckModelInfo,
@@ -75,7 +77,7 @@ impl<'a> AnkiConnect {
     pub async fn bulk_add_cards(
         &self,
         deck_model_info: DeckModelInfo,
-        notes: Vec<NoteData<'a>>,
+        notes: Vec<NoteData>,
     ) -> Result<Value> {
         let notes = notes
             .iter()

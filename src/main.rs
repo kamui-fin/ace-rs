@@ -5,10 +5,13 @@ mod deinflect;
 mod dict;
 mod media;
 
+use ace::{export_words, package_card};
+use anki::DeckModelInfo;
 use anyhow::Result;
 use clap::{App, Arg, SubCommand};
+use config::Config;
 use dict::DictDb;
-use std::path::Path;
+use std::{fs, path::Path, println};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -37,15 +40,16 @@ async fn main() -> Result<()> {
         .get_matches();
 
     // Load configuration
-    // let config = matches.value_of("config").unwrap_or("config.sample.toml");
-    // let conf_text = fs::read_to_string(config).unwrap();
-    // let config: Config = toml::from_str(&conf_text).unwrap();
+    let config = matches.value_of("config").unwrap_or("config.sample.toml");
+    let conf_text = fs::read_to_string(config).unwrap();
+    let config: Config = toml::from_str(&conf_text).unwrap();
 
-    let mut dictdb = DictDb::new()?;
+    let mut dict_db = DictDb::new()?;
 
     if let Some(import_matches) = matches.subcommand_matches("import") {
         let dict_path = import_matches.value_of("DIR").unwrap();
-        dictdb.load_yomichan_dict(Path::new(dict_path))?;
+        dict_db.load_yomichan_dict(Path::new(dict_path))?;
+        return Ok(());
     }
 
     Ok(())
