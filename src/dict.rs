@@ -3,7 +3,7 @@ use directories::BaseDirs;
 use glob::glob;
 use rusqlite::{params, Connection, Transaction};
 use serde_derive::Deserialize;
-use std::{fs, path::Path};
+use std::{convert::TryInto, fs, path::Path};
 
 use crate::deinflect;
 
@@ -19,10 +19,11 @@ struct YomichanDict {
 }
 
 #[derive(Debug)]
-struct DbDictionary {
+pub struct DbDictionary {
     id: i64,
-    title: String,
-    priority: i8,
+    pub title: String,
+    pub priority: i64,
+    pub fallback: bool,
 }
 
 #[derive(Debug)]
@@ -62,14 +63,16 @@ impl DictDb {
         Ok(DictDb { conn })
     }
 
-    pub fn load_yomichan_dict(&mut self, path: &Path) -> Result<()> {
+    pub fn load_yomichan_dict(&mut self, path: &Path, title: String) -> Result<()> {
         if Self::validate_yomichan(path) {
             // setup transaction for faster writes
             let tx = self.conn.get_transaction()?;
 
-            let dictmeta_text = std::fs::read_to_string(path.join("index.json"))?;
-            let dictmeta: YomichanDict = serde_json::from_str(&dictmeta_text)?;
-            let dict_id = Self::insert_dict(&dictmeta.title, &tx)?;
+            if Self::get_dict_id(&title, &tx).is_ok() {
+                return Ok(());
+            }
+
+            let dict_id = Self::insert_dict(&title, &tx)?;
 
             let term_banks = glob(path.join("term_bank_*.json").to_str().unwrap())?;
             for term_bank in term_banks {
@@ -86,11 +89,57 @@ impl DictDb {
         Ok(())
     }
 
+    pub fn update_dict(
+        &self,
+        title: &str,
+        new_priority: i64,
+        new_fallback: i8,
+    ) -> rusqlite::Result<usize> {
+        self.conn.conn.execute(
+            "UPDATE dicts SET priority = ?2, fallback = ?3 WHERE title = ?1",
+            params![title, new_priority, new_fallback],
+        )
+    }
+
+    pub fn rename_dict(&self, old: &str, new: &str) -> rusqlite::Result<usize> {
+        self.conn.conn.execute(
+            "UPDATE dicts SET title = ?2 WHERE title = ?1",
+            params![old, new],
+        )
+    }
+
+    pub fn get_all_dicts(&self) -> rusqlite::Result<Vec<DbDictionary>> {
+        let mut stmt = self.conn.conn.prepare("SELECT * FROM dicts")?;
+        let mut rows = stmt.query([])?;
+
+        let mut dicts = Vec::new();
+        while let Some(row) = rows.next()? {
+            dicts.push(DbDictionary {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                priority: row.get(2)?,
+                fallback: row.get(3)?,
+            })
+        }
+
+        Ok(dicts)
+    }
+
     pub fn validate_yomichan(path: &Path) -> bool {
         let is_dir = path.is_dir();
         let has_index = path.join("index.json").exists();
         let has_termbanks = path.join("term_bank_1.json").exists();
         is_dir && has_index && has_termbanks
+    }
+
+    fn get_dict_id(title: &str, tx: &Transaction) -> rusqlite::Result<i64> {
+        let dict_id = tx.query_row::<i64, _, _>(
+            "SELECT id FROM dicts WHERE title = ?1 LIMIT 1",
+            params![title],
+            |r| r.get(0),
+        )?;
+
+        Ok(dict_id)
     }
 
     // Inserts dictionary metadata and returns primary key
@@ -166,7 +215,8 @@ impl DictConn {
             "CREATE TABLE IF NOT EXISTS dicts (
                   id              INTEGER PRIMARY KEY AUTOINCREMENT,
                   title           TEXT NOT NULL,
-                  priority        INTEGER DEFAULT 0
+                  priority        INTEGER DEFAULT 0,
+                  fallback        INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS entries (

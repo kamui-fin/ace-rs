@@ -1,0 +1,15 @@
+words_file = "words.txt"
+failed_words_file = "failed_words.txt"
+
+[anki]
+deck = "Testing"
+model = "Vocab Cards"
+word_field = "Word"
+sent_field = "Expression"
+dict_field = "Meaning"
+img_field = "Picture"
+audio_field = "Audio"
+
+[dict."jmdict"]
+priority = 9
+fallback = true

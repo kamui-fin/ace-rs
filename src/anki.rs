@@ -1,9 +1,10 @@
 use anyhow::Result;
-use serde_derive::Deserialize;
+use serde_derive::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 pub struct AnkiConnect;
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct DeckModelInfo {
     pub deck: String,
     pub model: String,
