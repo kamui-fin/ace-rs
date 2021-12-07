@@ -16,7 +16,9 @@ pub fn read_words_file(path: &Path) -> Result<Vec<String>> {
 
 pub async fn package_card(dict_db: &DictDb, word: &str) -> Result<NoteData> {
     let sentence = get_sent(word).await?;
-    let meaning = &lookup(dict_db, word.to_string())?[0].meaning;
+    let meaning = &lookup(dict_db, word.to_string())?[0]
+        .meaning
+        .replace("\n", "<br>");
     let mut image = google_img(word.to_string(), 1).await?;
     let mut audio = forvo(word, 1).await?;
 

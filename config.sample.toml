@@ -11,5 +11,9 @@ img_field = "Picture"
 audio_field = "Audio"
 
 [dict."jmdict"]
-priority = 9
+priority = 0
 fallback = true
+
+[dict."shinmeikai"]
+priority = 4
+fallback = false

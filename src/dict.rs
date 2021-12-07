@@ -1,9 +1,10 @@
 use anyhow::{anyhow, bail, Result};
 use directories::BaseDirs;
-use glob::glob;
+use indicatif::{ProgressBar, ProgressStyle};
 use rusqlite::{params, Connection, Transaction};
 use serde_derive::Deserialize;
-use std::{convert::TryInto, fs, path::Path};
+use std::convert::TryInto;
+use std::{fs, path::Path};
 
 use crate::deinflect;
 
@@ -72,19 +73,43 @@ impl DictDb {
                 return Ok(());
             }
 
-            let dict_id = Self::insert_dict(&title, &tx)?;
+            let paths = fs::read_dir(path)?
+                .filter(|path| {
+                    let filename = path.as_ref().unwrap().file_name();
+                    let filename = filename.to_str().unwrap();
+                    filename.starts_with("term_bank_") && filename.ends_with(".json")
+                })
+                .collect::<Result<Vec<_>, std::io::Error>>()?;
 
-            let term_banks = glob(path.join("term_bank_*.json").to_str().unwrap())?;
-            for term_bank in term_banks {
-                let text = std::fs::read_to_string(term_bank.unwrap())?;
+            let total = paths.len();
+
+            let dict_id = Self::insert_dict(&title, &tx)?;
+            for (index, term_bank) in paths.iter().enumerate() {
+                let text = std::fs::read_to_string(&term_bank.path())?;
                 let data: Vec<YomichanEntryV1> = serde_json::from_str(&text)?;
+                let msg = format!("{}/{}", index + 1, total);
+                let bar = ProgressBar::new(data.len().try_into().unwrap()).with_message(msg);
+                bar.set_style(
+                    ProgressStyle::default_bar()
+                        .template(
+                            "{msg} {spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos:>7}/{len:7}",
+                        )
+                        .progress_chars("#>-"),
+                );
+
                 for entry in data {
                     Self::insert_entry(entry, dict_id, &tx)?;
+                    bar.inc(1);
                 }
+
+                bar.finish_and_clear();
             }
+
             if tx.commit().is_err() {
                 bail!("Unable to commit transaction");
             }
+
+            println!("Finished importing dictionary.");
         }
         Ok(())
     }
@@ -142,7 +167,6 @@ impl DictDb {
         Ok(dict_id)
     }
 
-    // Inserts dictionary metadata and returns primary key
     fn insert_dict(title: &str, tx: &Transaction) -> rusqlite::Result<i64> {
         tx.query_row::<i64, _, _>(
             "INSERT INTO dicts (title) VALUES (?1) RETURNING id",
@@ -166,24 +190,38 @@ impl DictDb {
         Ok(())
     }
 
-    pub fn lookup_word(&self, word: &str) -> rusqlite::Result<Vec<DbDictEntry>> {
+    fn _lookup_word(&self, word: &str, fallback: bool) -> rusqlite::Result<Vec<DbDictEntry>> {
         let mut stmt = self
             .conn
             .conn
-            .prepare("SELECT * FROM entries WHERE kanji = :word")?;
-        let rows = stmt.query_map(&[(":word", word)], |row| {
-            Ok(DbDictEntry {
-                id: row.get(0)?,
-                kanji: row.get(1)?,
-                reading: row.get(2)?,
-                meaning: row.get(3)?,
-                dict_id: row.get(4)?,
-            })
-        })?;
-
+            .prepare("SELECT * FROM entries INNER JOIN dicts ON entries.dict_id = dicts.id WHERE fallback = :fallback AND kanji = :word ORDER BY priority DESC")?;
+        let rows = stmt.query_map(
+            &[
+                (":word", word),
+                (":fallback", &(fallback as i32).to_string()),
+            ],
+            |row| {
+                Ok(DbDictEntry {
+                    id: row.get(0)?,
+                    kanji: row.get(1)?,
+                    reading: row.get(2)?,
+                    meaning: row.get(3)?,
+                    dict_id: row.get(4)?,
+                })
+            },
+        )?;
         let mut entries: Vec<DbDictEntry> = vec![];
         for row in rows {
             entries.push(row?);
+        }
+        Ok(entries)
+    }
+
+    pub fn lookup_word(&self, word: &str) -> rusqlite::Result<Vec<DbDictEntry>> {
+        let mut entries = self._lookup_word(word, false)?;
+        // fallback
+        if entries.is_empty() {
+            entries = self._lookup_word(word, true)?;
         }
 
         Ok(entries)

@@ -1,13 +1,15 @@
+# General
+
+- Error handling
+- Spinners and progress bar
+- Optimize performance
+- Accept input file as parameter
+- Custom data file type
+- Use local audio folder option
+- Safe search option
+
 # Dictionary config
 
-- Combine meanings option
-- Priority number
 - Max dicts
-
-# Audio config
-
-- Use local audio folder option
-
-# Picture config
-
-- Safe search option
+- Combine meanings option
+- Forward, backward, exact searching

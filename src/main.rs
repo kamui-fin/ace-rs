@@ -71,7 +71,7 @@ async fn main() -> Result<()> {
     if updated_config {
         for (name, info) in config.dict.iter() {
             let new_fallback = if info.fallback { 1 } else { 0 };
-            dict_db.update_dict(name, info.priority, new_fallback);
+            dict_db.update_dict(name, info.priority, new_fallback)?;
         }
     }
 
@@ -79,12 +79,14 @@ async fn main() -> Result<()> {
         let name = matches.value_of("name").unwrap();
         let path = matches.value_of("path").unwrap();
         dict_db.load_yomichan_dict(Path::new(&path), name.to_string())?;
+        return Ok(());
     }
 
     if let Some(matches) = matches.subcommand_matches("rename") {
         let old = matches.value_of("oldname").unwrap();
         let new = matches.value_of("newname").unwrap();
         dict_db.rename_dict(old, new)?;
+        return Ok(());
     }
 
     if matches.subcommand_matches("get_dicts").is_some() {
@@ -99,7 +101,11 @@ async fn main() -> Result<()> {
                 dict.title, dict.priority, dict.fallback
             );
         }
+        return Ok(());
     }
+
+    println!("Starting to export cards...");
+    ace::export_words(&dict_db, config.anki, &Path::new(&config.words_file)).await?;
 
     Ok(())
 }
