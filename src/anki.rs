@@ -1,4 +1,5 @@
 use anyhow::Result;
+use indicatif::{ProgressBar, ProgressStyle};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -92,6 +93,14 @@ impl AnkiConnect {
             }
         });
         let client = reqwest::Client::new();
+        let pb = ProgressBar::new_spinner();
+        pb.enable_steady_tick(120);
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+                .template("{spinner:.blue} {msg}"),
+        );
+        pb.set_message("Exporting notes...");
         let res = client
             .post("http://localhost:8765")
             .json(&post_data)
@@ -99,7 +108,7 @@ impl AnkiConnect {
             .await?
             .json::<Value>()
             .await?;
-
+        pb.finish_with_message("Done");
         Ok(res)
     }
 }

@@ -27,6 +27,14 @@ async fn main() -> Result<()> {
                 .help("Sets a custom config file")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("wordfile")
+                .short("f")
+                .long("wordfile")
+                .value_name("FILE")
+                .help("Use a different words file")
+                .takes_value(true),
+        )
         .subcommand(
             SubCommand::with_name("import")
                 .arg(Arg::with_name("name"))
@@ -104,8 +112,10 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    println!("Starting to export cards...");
-    ace::export_words(&dict_db, config.anki, &Path::new(&config.words_file)).await?;
+    let words_file = matches.value_of("wordfile").unwrap_or(&config.words_file);
+
+    println!("Starting to generate card data...");
+    ace::export_words(&dict_db, config.anki, &Path::new(words_file)).await?;
 
     Ok(())
 }
