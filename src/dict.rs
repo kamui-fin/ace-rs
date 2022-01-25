@@ -25,6 +25,7 @@ pub struct DbDictionary {
     pub title: String,
     pub priority: i64,
     pub fallback: bool,
+    pub enabled: bool,
 }
 
 #[derive(Debug)]
@@ -119,10 +120,11 @@ impl DictDb {
         title: &str,
         new_priority: i64,
         new_fallback: i8,
+        enabled: i8,
     ) -> rusqlite::Result<usize> {
         self.conn.conn.execute(
-            "UPDATE dicts SET priority = ?2, fallback = ?3 WHERE title = ?1",
-            params![title, new_priority, new_fallback],
+            "UPDATE dicts SET priority = ?2, fallback = ?3, enabled = ?4 WHERE title = ?1",
+            params![title, new_priority, new_fallback, enabled],
         )
     }
 
@@ -144,6 +146,7 @@ impl DictDb {
                 title: row.get(1)?,
                 priority: row.get(2)?,
                 fallback: row.get(3)?,
+                enabled: row.get(4)?,
             })
         }
 
@@ -194,7 +197,7 @@ impl DictDb {
         let mut stmt = self
             .conn
             .conn
-            .prepare("SELECT * FROM entries INNER JOIN dicts ON entries.dict_id = dicts.id WHERE fallback = :fallback AND kanji = :word ORDER BY priority DESC")?;
+            .prepare("SELECT * FROM entries INNER JOIN dicts ON entries.dict_id = dicts.id WHERE enabled = 1 AND fallback = :fallback AND kanji = :word ORDER BY priority DESC")?;
         let rows = stmt.query_map(
             &[
                 (":word", word),
@@ -254,7 +257,8 @@ impl DictConn {
                   id              INTEGER PRIMARY KEY AUTOINCREMENT,
                   title           TEXT NOT NULL,
                   priority        INTEGER DEFAULT 0,
-                  fallback        INTEGER DEFAULT 0
+                  fallback        INTEGER DEFAULT 0,
+                  enabled         INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS entries (

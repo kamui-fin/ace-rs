@@ -1,11 +1,13 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use regex::Regex;
 use scraper::{Html, Selector};
 use serde_json::Value;
+use std::fs;
 use std::{io::Cursor, path::Path};
 use uuid::Uuid;
 
 use crate::anki::Media;
+use crate::anki::Source;
 
 fn with_uuid(prefix: String) -> String {
     let uuid = Uuid::new_v4().to_string();
@@ -48,6 +50,30 @@ async fn download_file(url: &str, output_path: &Path, extension: Option<&str>) -
     Ok(())
 }
 
+pub fn audio_dir(word: &str, regex: &str, num: usize, directory: &Path) -> Result<Vec<Media>> {
+    let mut audio_files: Vec<Media> = vec![];
+    let mut count = 0;
+    let re = Regex::new(&regex.replace("%word%", word)).context("Unable to parse regex")?;
+    for entry in fs::read_dir(directory)? {
+        if count >= num {
+            break;
+        }
+        let entry = entry?;
+        let path = entry.path();
+        let path_str = path.to_str().unwrap();
+        if path.is_file() && re.is_match(path_str) {
+            let filename = with_uuid(word.to_string());
+            let media = Media {
+                filename,
+                source: Source::Path(path_str.to_string()),
+            };
+            audio_files.push(media);
+            count += 1;
+        }
+    }
+    Ok(audio_files)
+}
+
 pub async fn forvo(word: &str, num: usize) -> Result<Vec<Media>> {
     let url = format!("https://forvo.com/search/{}/", word);
 
@@ -66,7 +92,10 @@ pub async fn forvo(word: &str, num: usize) -> Result<Vec<Media>> {
         .map(|p| {
             let url = String::from("https://forvo.com/player-mp3Handler.php?path=") + p;
             let filename = with_uuid(word.to_string());
-            Media { url, filename }
+            Media {
+                source: Source::Url(url),
+                filename,
+            }
         })
         .collect::<Vec<Media>>();
 
@@ -111,7 +140,7 @@ pub async fn google_img(word: String, num: usize) -> Result<Vec<Media>> {
         .map(|url| {
             let filename = with_uuid(word.clone());
             Media {
-                url: url.to_string(),
+                source: Source::Url(url.to_string()),
                 filename,
             }
         })

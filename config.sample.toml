@@ -1,5 +1,5 @@
-words_file = "words.txt"
-failed_words_file = "failed_words.txt"
+words_file = "/home/user/words.txt"
+failed_words_file = "/home/user/failed_words.txt"
 
 [anki]
 deck = "Testing"
@@ -10,10 +10,23 @@ dict_field = "Meaning"
 img_field = "Picture"
 audio_field = "Audio"
 
+[ankiconnect]
+port = 8765
+address = "127.0.0.1"
+
 [dict."jmdict"]
+enabled = true
 priority = 0
 fallback = true
 
 [dict."shinmeikai"]
+enabled = true
 priority = 4
 fallback = false
+
+[media]
+custom_audio_dir = "/home/user/Audio Bank"
+regex = "- %word%.mp3$"
+fallback_forvo = false
+bail_on_empty = true
+limit = 1

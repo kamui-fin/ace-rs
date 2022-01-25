@@ -1,9 +1,13 @@
-use anyhow::Result;
+use anyhow::anyhow;
+use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-pub struct AnkiConnect;
+pub struct AnkiConnect {
+    pub port: usize,
+    pub address: String,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DeckModelInfo {
@@ -17,9 +21,15 @@ pub struct DeckModelInfo {
 }
 
 #[derive(Debug)]
+pub enum Source {
+    Path(String),
+    Url(String),
+}
+
+#[derive(Debug)]
 pub struct Media {
-    pub url: String,
     pub filename: String,
+    pub source: Source,
 }
 
 #[derive(Debug)]
@@ -27,8 +37,8 @@ pub struct NoteData {
     pub word: String,
     pub sentence: String,
     pub meaning: String,
-    pub image: Media,
-    pub audio: Media,
+    pub image: Vec<Media>,
+    pub audio: Vec<Media>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -38,11 +48,76 @@ pub struct AddResult {
 }
 
 impl AnkiConnect {
+    pub async fn status(&self) -> Result<()> {
+        let client = reqwest::Client::new();
+        let res = client
+            .get(format!("http://{}:{}", self.address, self.port))
+            .send()
+            .await
+            .with_context(|| format!("Failed to connect to AnkiConnect. Is Anki running?"))?
+            .text()
+            .await?;
+
+        if res.contains("AnkiConnect") {
+            return Ok(());
+        }
+
+        Err(anyhow!("Another service is already using port 8765"))
+    }
+
     pub fn get_note_json(
         &self,
         deck_model_info: &DeckModelInfo,
         note_data: &NoteData,
     ) -> serde_json::Value {
+        let empty_str = String::from("");
+        let audio_data = note_data
+            .audio
+            .iter()
+            .map(|audio| {
+                let audio_url;
+                let audio_path;
+
+                match &audio.source {
+                    Source::Url(url) => {
+                        audio_url = url;
+                        audio_path = String::from("");
+                    }
+                    Source::Path(path) => {
+                        audio_path = path.to_string();
+                        audio_url = &empty_str;
+                    }
+                };
+                json!({
+                    "url": audio_url,
+                    "path": audio_path,
+                    "filename": audio.filename,
+                    "fields": [
+                        deck_model_info.audio_field
+                    ]
+                })
+            })
+            .collect::<Vec<Value>>();
+
+        let picture_data = note_data
+            .image
+            .iter()
+            .map(|pic| {
+                let picture_url = if let Source::Url(url) = &pic.source {
+                    url
+                } else {
+                    &empty_str
+                };
+                json!({
+                    "url": picture_url,
+                    "filename": pic.filename,
+                    "fields": [
+                        deck_model_info.img_field
+                    ]
+                })
+            })
+            .collect::<Vec<Value>>();
+
         json!({
             "deckName": deck_model_info.deck,
             "modelName": deck_model_info.model,
@@ -59,20 +134,8 @@ impl AnkiConnect {
                     "checkAllModels": false
                 }
             },
-            "audio": [{
-                "url": note_data.audio.url,
-                "filename": note_data.audio.filename,
-                "fields": [
-                    deck_model_info.audio_field
-                ]
-            }],
-            "picture": [{
-                "url": note_data.image.url ,
-                "filename": note_data.image.filename,
-                "fields": [
-                    deck_model_info.img_field
-                ]
-            }]
+            "audio": audio_data,
+            "picture": picture_data
         })
     }
 
@@ -102,10 +165,11 @@ impl AnkiConnect {
         );
         pb.set_message("Exporting notes...");
         let res = client
-            .post("http://localhost:8765")
+            .post(format!("http://{}:{}", self.address, self.port))
             .json(&post_data)
             .send()
-            .await?
+            .await
+            .with_context(|| format!("Failed to connect to AnkiConnect. Is Anki running?"))?
             .json::<Value>()
             .await?;
         pb.finish_with_message("Done");

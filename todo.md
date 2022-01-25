@@ -1,13 +1,13 @@
-# General
+# Priority
 
-- Error handling
+- Proper search
 - Optimize performance
-- Use local audio folder option
+
+# Nice to have
+
 - Safe search option
-- Custom data file type
-
-# Dictionary config
-
-- Max dicts
-- Combine meanings option
 - Forward, backward, exact searching
+
+# Considering
+
+- Custom data file type
