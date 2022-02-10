@@ -1,5 +1,6 @@
 use crate::{
     anki::NoteData,
+    config::LookupConfig,
     dict::{lookup, DictDb},
     media::{forvo, get_sent, google_img},
 };
@@ -28,12 +29,13 @@ pub async fn package_card(
     custom_audio_dir: &str,
     media_limit: usize,
     audio_regex: &str,
+    sort_freq: bool,
 ) -> Result<Option<NoteData>> {
     let sentence = get_sent(word)
         .await
         .with_context(|| "Failed to fetch sentence")?;
 
-    let meaning = &lookup(dict_db, word.to_string())
+    let meaning = &lookup(dict_db, word.to_string(), sort_freq)
         .with_context(|| "Failed to lookup word in dictionary")?;
 
     if meaning.is_empty() {
@@ -96,6 +98,7 @@ pub async fn export_words(
     media_limit: usize,
     anki_connect_config: AnkiConnectConfig,
     audio_regex: String,
+    sort_freq: bool,
 ) -> Result<()> {
     let anki_connect = AnkiConnect {
         port: anki_connect_config.port,
@@ -123,6 +126,7 @@ pub async fn export_words(
             &custom_audio_dir,
             media_limit,
             &audio_regex,
+            sort_freq,
         )
         .await?;
         if let Some(ndata) = ndata {

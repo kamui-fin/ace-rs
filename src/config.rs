@@ -12,6 +12,7 @@ pub struct Config {
     pub dict: HashMap<String, DictInfo>,
     pub media: MediaConfig,
     pub ankiconnect: AnkiConnectConfig,
+    pub lookup: LookupConfig,
 }
 
 #[derive(Serialize, Hash, Deserialize, Debug)]
@@ -34,6 +35,11 @@ pub struct MediaConfig {
 pub struct AnkiConnectConfig {
     pub port: usize,
     pub address: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct LookupConfig {
+    pub sort_freq: bool,
 }
 
 impl Config {

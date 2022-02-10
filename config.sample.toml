@@ -24,6 +24,9 @@ enabled = true
 priority = 4
 fallback = false
 
+[lookup]
+sort_freq = true
+
 [media]
 custom_audio_dir = "/home/user/Audio Bank"
 regex = "- %word%.mp3$"

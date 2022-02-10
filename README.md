@@ -3,9 +3,10 @@
 A blazing fast command line program in Rust to automate the creation of [anime cards](https://animecards.site/ankicards/#anime-cardsword-context-cards).
 
 Features include:
-- Batch generates Anki cards from the words listed in a text file 
+
+- Batch generates Anki cards from the words listed in a text file
 - Example sentences from [massif.la](https://massif.la/ja)
-- Audio from [forvo](https://forvo.com/) 
+- Audio from [forvo](https://forvo.com/)
 - Custom audio directory support
 - Images from [google images](https://images.google.com/)
 - Definitions from [yomichan](https://foosoft.net/projects/yomichan/#dictionaries) dictionaries of your choice
@@ -45,6 +46,7 @@ If ran without any subcommand, the tool will simply start the card generation an
 ### Managing dictionaries
 
 To get started, you'll need some yomichan dictionaries installed for definitions. This can be done through various subcommands. Here's example of how you would run one:
+
 ```
 ace subcommand arg1 arg2
 ```
@@ -53,6 +55,16 @@ ace subcommand arg1 arg2
 
 Use the `import` subcommand and pass in a label and an absolute path to the directory that holds dictionary files. Currently, only yomichan dictionaries with json files are supported.
 This effectively loads it into the database and is indexed for fast lookups.
+
+#### Frequency Lists
+
+To use frequency lists for better lookup results that are ranked according to their frequency, use the `frequency` subcommand.
+It requires a path to the frequency list, which should be in yomichan format.
+
+Optional boolean parameters:
+
+1. `avg` - When adding more lists, average all the frequencies of past lists. Defaults to `false`.
+2. `corpus` - When the higher list's "frequency" values, the higher the actual frequency. Usually this is the case with corpus lists. Defaults to `false`.
 
 #### Rename
 

@@ -40,6 +40,28 @@ fn get_matches() -> ArgMatches<'static> {
                 .arg(Arg::with_name("path")),
         )
         .subcommand(
+            SubCommand::with_name("frequency")
+                .arg(Arg::with_name("path"))
+                .arg(
+                    Arg::with_name("avg")
+                        .validator(|arg| {
+                            arg.parse::<bool>()
+                                .map(|_| ())
+                                .map_err(|_| String::from("Must pass a boolean value"))
+                        })
+                        .default_value("false"),
+                )
+                .arg(
+                    Arg::with_name("corpus")
+                        .validator(|arg| {
+                            arg.parse::<bool>()
+                                .map(|_| ())
+                                .map_err(|_| String::from("Must pass a boolean value"))
+                        })
+                        .default_value("false"),
+                ),
+        )
+        .subcommand(
             SubCommand::with_name("rename")
                 .arg(Arg::with_name("oldname"))
                 .arg(Arg::with_name("newname")),
@@ -110,6 +132,19 @@ async fn main() -> Result<()> {
         }
     }
 
+    if let Some(matches) = matches.subcommand_matches("frequency") {
+        let path = match matches.value_of("path") {
+            Some(val) => val,
+            None => bail!("Must pass in a frequency list path"),
+        };
+        let avg = matches.value_of("avg").unwrap().parse::<bool>().unwrap();
+        let corpus = matches.value_of("corpus").unwrap().parse::<bool>().unwrap();
+        dict_db
+            .update_frequency(Path::new(&path), avg, corpus)
+            .unwrap();
+        return Ok(());
+    }
+
     if let Some(matches) = matches.subcommand_matches("import") {
         let name = match matches.value_of("name") {
             Some(val) => val,
@@ -166,6 +201,7 @@ async fn main() -> Result<()> {
         config.media.limit,
         config.ankiconnect,
         config.media.regex,
+        config.lookup.sort_freq,
     )
     .await?;
 

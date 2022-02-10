@@ -49,8 +49,25 @@ struct YomichanEntryV1 {
     term_tags: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct YomichanFrequencyEntry {
+    pub kanji: String,
+    pub tag: String,
+    pub frequency: i64,
+}
+
 pub struct DictDb {
     conn: DictConn,
+}
+
+fn all_kana(word: &str) -> bool {
+    for char in word.chars() {
+        let matches = matches!(char, '\u{3040}'..='\u{30FF}' | '\u{FF66}'..='\u{FF9F}');
+        if !matches {
+            return false;
+        }
+    }
+    true
 }
 
 impl DictDb {
@@ -59,6 +76,7 @@ impl DictDb {
         if conn.new {
             let res = conn.setup_schema();
             if res.is_err() {
+                eprintln!("{}", res.unwrap_err());
                 bail!("Unable to setup database schema")
             }
         }
@@ -66,7 +84,7 @@ impl DictDb {
     }
 
     pub fn load_yomichan_dict(&mut self, path: &Path, title: String) -> Result<()> {
-        if Self::validate_yomichan(path) {
+        if Self::validate_yomichan(path, false) {
             // setup transaction for faster writes
             let tx = self.conn.get_transaction()?;
 
@@ -115,6 +133,57 @@ impl DictDb {
         Ok(())
     }
 
+    pub fn update_frequency(&mut self, path: &Path, avg: bool, corpus: bool) -> Result<()> {
+        if Self::validate_yomichan(path, true) {
+            // setup transaction for faster writes
+            let tx = self.conn.get_transaction()?;
+
+            let mut paths = fs::read_dir(path)?
+                .filter(|path| {
+                    let filename = path.as_ref().unwrap().file_name();
+                    let filename = filename.to_str().unwrap();
+                    filename.starts_with("term_meta_bank_") && filename.ends_with(".json")
+                })
+                .collect::<Result<Vec<_>, std::io::Error>>()?;
+
+            paths.sort_by_key(|a| a.file_name());
+
+            let total = paths.len();
+            let mut rank = 1;
+            for (index, term_bank) in paths.iter().enumerate() {
+                let text = std::fs::read_to_string(&term_bank.path())?;
+                let mut data: Vec<YomichanFrequencyEntry> = serde_json::from_str(&text)?;
+                let msg = format!("{}/{}", index + 1, total);
+                let bar = ProgressBar::new(data.len().try_into().unwrap()).with_message(msg);
+                bar.set_style(
+                    ProgressStyle::default_bar()
+                        .template(
+                            "{msg} {spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos:>7}/{len:7}",
+                        )
+                        .progress_chars("#>-"),
+                );
+
+                for entry in data.iter_mut() {
+                    if corpus {
+                        entry.frequency = rank;
+                    }
+                    Self::update_frequency_entry(entry, avg, &tx)?;
+                    bar.inc(1);
+                    rank += 1;
+                }
+
+                bar.finish_and_clear();
+            }
+
+            if tx.commit().is_err() {
+                bail!("Unable to commit transaction");
+            }
+
+            println!("Finished updating frequency data.");
+        }
+        Ok(())
+    }
+
     pub fn update_dict(
         &self,
         title: &str,
@@ -153,10 +222,15 @@ impl DictDb {
         Ok(dicts)
     }
 
-    pub fn validate_yomichan(path: &Path) -> bool {
+    pub fn validate_yomichan(path: &Path, is_freq: bool) -> bool {
         let is_dir = path.is_dir();
         let has_index = path.join("index.json").exists();
-        let has_termbanks = path.join("term_bank_1.json").exists();
+        let has_termbanks;
+        if is_freq {
+            has_termbanks = path.join("term_meta_bank_1.json").exists();
+        } else {
+            has_termbanks = path.join("term_bank_1.json").exists();
+        }
         is_dir && has_index && has_termbanks
     }
 
@@ -193,11 +267,54 @@ impl DictDb {
         Ok(())
     }
 
-    fn _lookup_word(&self, word: &str, fallback: bool) -> rusqlite::Result<Vec<DbDictEntry>> {
-        let mut stmt = self
-            .conn
-            .conn
-            .prepare("SELECT * FROM entries INNER JOIN dicts ON entries.dict_id = dicts.id WHERE enabled = 1 AND fallback = :fallback AND kanji = :word ORDER BY priority DESC")?;
+    pub fn update_frequency_entry(
+        entry: &mut YomichanFrequencyEntry,
+        avg: bool,
+        tx: &Transaction,
+    ) -> rusqlite::Result<()> {
+        let word = &entry.kanji;
+        let new_freq = if avg {
+            let avg_freq = tx.query_row::<i64, _, _>(
+                "SELECT freq FROM freq WHERE word = ?1",
+                params![word],
+                |r| r.get(0),
+            );
+            if let Ok(avg_freq) = avg_freq {
+                (avg_freq + entry.frequency) / 2
+            } else {
+                entry.frequency
+            }
+        } else {
+            entry.frequency
+        };
+        tx.execute(
+            "INSERT INTO freq (word, freq) VALUES (?2, ?1) ON CONFLICT (word) DO UPDATE SET freq = ?1 WHERE word = ?2",
+            params![new_freq, word],
+        )?;
+        Ok(())
+    }
+
+    fn _lookup_word(
+        &self,
+        word: &str,
+        fallback: bool,
+        sort_freq: bool,
+    ) -> rusqlite::Result<Vec<DbDictEntry>> {
+        let lookup_column = if all_kana(word) { "reading" } else { "kanji" };
+        let sort_sql = if sort_freq {
+            ", (CASE WHEN freq.freq IS NULL then 1 ELSE 0 END), freq ASC"
+        } else {
+            ""
+        };
+        let sql = format!(
+            "SELECT entries.*, freq.freq FROM entries 
+            INNER JOIN dicts ON entries.dict_id = dicts.id 
+            LEFT JOIN freq ON entries.kanji = freq.word
+            WHERE enabled = 1 AND fallback = :fallback AND {} = :word
+            ORDER BY priority DESC{}",
+            lookup_column, sort_sql
+        );
+        let mut stmt = self.conn.conn.prepare(&sql)?;
         let rows = stmt.query_map(
             &[
                 (":word", word),
@@ -217,14 +334,15 @@ impl DictDb {
         for row in rows {
             entries.push(row?);
         }
+        println!("{:#?}", entries);
         Ok(entries)
     }
 
-    pub fn lookup_word(&self, word: &str) -> rusqlite::Result<Vec<DbDictEntry>> {
-        let mut entries = self._lookup_word(word, false)?;
+    pub fn lookup_word(&self, word: &str, sort_freq: bool) -> rusqlite::Result<Vec<DbDictEntry>> {
+        let mut entries = self._lookup_word(word, false, sort_freq)?;
         // fallback
         if entries.is_empty() {
-            entries = self._lookup_word(word, true)?;
+            entries = self._lookup_word(word, true, sort_freq)?;
         }
 
         Ok(entries)
@@ -267,23 +385,30 @@ impl DictConn {
                   reading         TEXT,
                   meaning         TEXT NOT NULL,
                   dict_id         INTEGER NOT NULL,
+                  frequency       INTEGER DEFAULT 0,
                   FOREIGN KEY(dict_id) REFERENCES dicts(id)
             );
 
-            CREATE INDEX IF NOT EXISTS kanji_idx ON entries(kanji); 
+            CREATE TABLE IF NOT EXISTS freq (
+                  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                  word            TEXT NOT NULL UNIQUE,
+                  freq            INTEGER NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS kanji_idx ON entries(kanji);
             ",
         )
     }
 }
 
-pub fn lookup(dict_db: &DictDb, word: String) -> Result<Vec<DbDictEntry>> {
+pub fn lookup(dict_db: &DictDb, word: String, sort_freq: bool) -> Result<Vec<DbDictEntry>> {
     let mut results: Vec<DbDictEntry> = vec![];
     let deinflect_json = include_str!("../data/deinflect.json");
     let deinflector = deinflect::Deinflector::new(deinflect_json);
     let deinflected_forms = deinflector.deinflect(word);
 
     for form in deinflected_forms {
-        let lookup_res = dict_db.lookup_word(&form.term)?;
+        let lookup_res = dict_db.lookup_word(&form.term, sort_freq)?;
         results.extend(lookup_res);
     }
 
