@@ -35,14 +35,18 @@ pub async fn package_card(
         .await
         .with_context(|| "Failed to fetch sentence")?;
 
-    let meaning = &lookup(dict_db, word.to_string(), sort_freq)
+    let defs = &lookup(dict_db, word.to_string(), sort_freq)
         .with_context(|| "Failed to lookup word in dictionary")?;
 
-    if meaning.is_empty() {
+    if defs.is_empty() {
         return Ok(None);
     }
 
-    let meaning = meaning[0].meaning.replace("\n", "<br>");
+    let definition = defs
+        .iter()
+        .map(|def| def.meaning.replace("\n", "<br>"))
+        .collect::<Vec<String>>()
+        .join("<br><br>");
 
     let image_res = google_img(word.to_string(), media_limit)
         .await
@@ -79,7 +83,7 @@ pub async fn package_card(
     let ndata = NoteData {
         word: word.to_string(),
         sentence,
-        meaning: meaning.to_string(),
+        meaning: definition,
         image,
         audio,
     };

@@ -1,4 +1,6 @@
 use anyhow::{Context, Result};
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 use regex::Regex;
 use scraper::{Html, Selector};
 use serde_json::Value;
@@ -134,8 +136,21 @@ async fn get_fullres_urls(word: &str) -> Result<Vec<String>> {
 }
 
 pub async fn google_img(word: String, num: usize) -> Result<Vec<Media>> {
-    let urls = get_fullres_urls(&word).await?[..num].to_vec();
-    let medias = urls
+    // try to only shuffle first 10 for relevance
+    let urls = get_fullres_urls(&word).await?;
+    let max_offset = if urls.len() < num {
+        urls.len()
+    } else if urls.len() < num + 10 {
+        num
+    } else {
+        num + 10
+    };
+    let mut shuffled = urls[..max_offset].to_vec();
+    shuffled.shuffle(&mut thread_rng());
+    if num < shuffled.len() {
+        shuffled = shuffled[..num].to_vec();
+    }
+    let medias = shuffled
         .iter()
         .map(|url| {
             let filename = with_uuid(word.clone());

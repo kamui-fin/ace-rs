@@ -334,7 +334,6 @@ impl DictDb {
         for row in rows {
             entries.push(row?);
         }
-        println!("{:#?}", entries);
         Ok(entries)
     }
 
