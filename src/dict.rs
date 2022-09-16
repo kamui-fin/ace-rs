@@ -6,6 +6,7 @@ use serde_derive::Deserialize;
 use std::convert::TryInto;
 use std::{fs, path::Path};
 
+use crate::ace::get_config;
 use crate::deinflect;
 
 #[derive(Debug)]
@@ -410,25 +411,21 @@ impl DictConn {
     }
 }
 
-pub fn lookup(
-    dict_db: &DictDb,
-    word: String,
-    sort_freq: bool,
-    is_japanese: bool,
-) -> Result<Vec<DbDictEntry>> {
+pub fn lookup(dict_db: &DictDb, word: String) -> Result<Vec<DbDictEntry>> {
+    let config = get_config()?;
     let mut results: Vec<DbDictEntry> = vec![];
 
-    if is_japanese {
+    if config.is_japanese {
         let deinflect_json = include_str!("../data/deinflect.json");
         let deinflector = deinflect::Deinflector::new(deinflect_json);
         let deinflected_forms = deinflector.deinflect(word);
 
         for form in deinflected_forms {
-            let lookup_res = dict_db.lookup_word(&form.term, sort_freq, true)?;
+            let lookup_res = dict_db.lookup_word(&form.term, config.lookup.sort_freq, true)?;
             results.extend(lookup_res);
         }
     } else {
-        results = dict_db.lookup_word(&word, sort_freq, false)?;
+        results = dict_db.lookup_word(&word, config.lookup.sort_freq, false)?;
     }
 
     Ok(results)

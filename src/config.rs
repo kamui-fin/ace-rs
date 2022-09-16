@@ -46,7 +46,7 @@ impl Config {
     pub fn from_path(path: &str) -> Result<Self> {
         let conf_text = fs::read_to_string(path)?;
         let config: Config = toml::from_str(&conf_text)
-            .with_context(|| format!("Unable to parse the configuration file"))?;
+            .with_context(|| "Unable to parse the configuration file".to_string())?;
         Ok(config)
     }
 }

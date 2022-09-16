@@ -4,6 +4,8 @@ use indicatif::{ProgressBar, ProgressStyle};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::ace::get_config;
+
 pub struct AnkiConnect {
     pub port: usize,
     pub address: String,
@@ -107,14 +109,11 @@ impl AnkiConnect {
         })
     }
 
-    pub async fn bulk_add_cards(
-        &self,
-        deck_model_info: DeckModelInfo,
-        notes: Vec<NoteData>,
-    ) -> Result<Value> {
+    pub async fn bulk_add_cards(&self, notes: Vec<NoteData>) -> Result<Value> {
+        let config = get_config()?;
         let notes = notes
             .iter()
-            .map(|note| self.get_note_json(&deck_model_info, note))
+            .map(|note| self.get_note_json(&config.anki, note))
             .collect::<Vec<serde_json::Value>>();
         let post_data = json!({
             "action": "addNotes",

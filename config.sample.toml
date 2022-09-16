@@ -1,8 +1,16 @@
+# NOTE: leave field as an empty string if optional
+
+# each line has its own word
+# will be used for batch-generation functionality
 words_file = "/home/user/words.txt"
+# words that could not be added are appended to this file
 failed_words_file = "/home/user/failed_words.txt"
-is_japanese = false # chinese
+# language is by default chinese
+# you can change it by setting this to true
+is_japanese = false
 
 [anki]
+# hit rename in the target deck, and copy the current name
 deck = "Deck"
 model = "Note Type"
 word_field = "Word"
@@ -10,22 +18,35 @@ sent_field = "Sentence"
 dict_field = "Definition"
 img_field = "Picture"
 audio_field = "Audio"
+# for chinese, to display pinyin w/ coloring in Anki
 word_pinyin_field = "Word + Word Pinyin"
 
+# make sure to get the AnkiConnect addon first
+# usually this config can be left alone
 [ankiconnect]
 port = 8765
 address = "127.0.0.1"
 
+# each individual dictionary has a config section like this
 [dict."cedict"]
 enabled = true
+# priority controls how definitions rank amongst multiple results
+# higher the priority, the higher up it shows up
 priority = 9999
+# if all other non-priority dicts don't have results, use this dict
 fallback = false
 
 [lookup]
+# use a custom loaded frequency list to sort results based on their frequency
 sort_freq = true
 
 [media]
+# if you have a custom audio server, you can configure it here
+# format the link like such, where the word gets appended to the link
 custom_audio_server = "http://localhost:5000/?expression="
+# enable/disable picture generation
 add_picture = false
+# if the audio server fails to return results, use forvo instead
 fallback_forvo = false
+# if media could not be fetched, simply exit
 bail_on_empty = true

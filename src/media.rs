@@ -14,28 +14,34 @@ fn with_uuid(prefix: String) -> String {
     return format!("{}-{}", prefix, uuid);
 }
 
-async fn fetch_massif(word: &str) -> Result<String> {
-    let base_url = String::from("https://massif.la/ja/search?q=");
-    let resp = reqwest::get(base_url + word).await?;
-
+async fn general_text_select(url: &str, selector: &str) -> Result<String> {
+    let resp = reqwest::get(url).await?;
     let document = Html::parse_document(&resp.text().await?);
-    let selector = Selector::parse("li.text-japanese > div:not(.result-meta)").unwrap();
+    let selector = Selector::parse(selector).unwrap();
     let sent_div = document.select(&selector).next().unwrap();
     let sent_text = sent_div.text().collect::<Vec<_>>().join("");
 
     Ok(sent_text)
 }
 
+async fn fetch_massif(word: &str) -> Result<String> {
+    general_text_select(
+        format!("https://massif.la/ja/search?q={}", word).as_str(),
+        "li.text-japanese > div:not(.result-meta)",
+    )
+    .await
+}
+
 async fn fetch_chineseboost(word: &str) -> Result<String> {
-    let base_url = String::from("https://www.chineseboost.com/chinese-example-sentences?query=");
-    let resp = reqwest::get(base_url + word).await?;
-
-    let document = Html::parse_document(&resp.text().await?);
-    let selector = Selector::parse(".liju .hanzi.sentence").unwrap();
-    let sent_div = document.select(&selector).next().unwrap();
-    let sent_text = sent_div.text().collect::<Vec<_>>().join("");
-
-    Ok(sent_text)
+    general_text_select(
+        format!(
+            "https://www.chineseboost.com/chinese-example-sentences?query={}",
+            word
+        )
+        .as_str(),
+        ".liju .hanzi.sentence",
+    )
+    .await
 }
 
 pub async fn get_sent(word: &str, is_japanese: bool) -> Result<String> {
@@ -72,7 +78,7 @@ async fn download_file(url: &str, output_path: &Path, extension: Option<&str>) -
 
 pub async fn fetch_audio_server(word: &str, custom_audio_server: &str) -> Result<Media> {
     let url = format!("{}{}", custom_audio_server, word);
-    let res = reqwest::get(&url).await?.error_for_status()?;
+    reqwest::get(&url).await?.error_for_status()?;
     let filename = with_uuid(word.to_string());
 
     Ok(Media { url, filename })
@@ -98,6 +104,7 @@ pub async fn forvo(word: &str) -> Result<Media> {
 }
 
 async fn get_fullres_urls(word: &str, is_japanese: bool) -> Result<Vec<String>> {
+    // TODO: use better image source for Chinese
     let country = if is_japanese { "co.jp" } else { "com.hk" };
 
     let url = format!("https://google.{}/search?q={}&tbm=isch", country, word);

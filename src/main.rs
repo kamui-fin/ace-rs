@@ -5,6 +5,8 @@ mod deinflect;
 mod dict;
 mod media;
 
+use ace::get_config;
+use once_cell::sync::OnceCell;
 use std::{fs, path::Path};
 
 use anyhow::{bail, Result};
@@ -12,6 +14,8 @@ use clap::{App, Arg, ArgMatches, SubCommand};
 use config::Config;
 use dict::DictDb;
 use directories::BaseDirs;
+
+static CONFIG: OnceCell<Config> = OnceCell::new();
 
 fn get_matches() -> ArgMatches<'static> {
     let matches = App::new("ace")
@@ -116,21 +120,8 @@ fn has_updated_config(config_path: String, basedirs: &BaseDirs) -> Result<bool> 
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let matches = get_matches();
-    let basedirs = BaseDirs::new().expect("Failed to query base directories");
-    let config_path = get_config_path(&matches, &basedirs)?;
-    let config = Config::from_path(&config_path)?;
-
     let mut dict_db = DictDb::new()?;
-    let updated_config = has_updated_config(config_path, &basedirs)?;
-
-    if updated_config {
-        for (name, info) in config.dict.iter() {
-            let new_fallback = if info.fallback { 1 } else { 0 };
-            let new_enabled = if info.enabled { 1 } else { 0 };
-            dict_db.update_dict(name, info.priority, new_fallback, new_enabled)?;
-        }
-    }
+    let matches = get_matches();
 
     if let Some(matches) = matches.subcommand_matches("frequency") {
         let path = match matches.value_of("path") {
@@ -156,6 +147,22 @@ async fn main() -> Result<()> {
         };
         dict_db.load_yomichan_dict(Path::new(&path), name.to_string())?;
         return Ok(());
+    }
+
+    let basedirs = BaseDirs::new().expect("Failed to query base directories");
+    let config_path = get_config_path(&matches, &basedirs)?;
+    let config = Config::from_path(&config_path)?;
+    CONFIG.set(config).unwrap();
+    let config = get_config()?;
+
+    let updated_config = has_updated_config(config_path, &basedirs)?;
+
+    if updated_config {
+        for (name, info) in config.dict.iter() {
+            let new_fallback = if info.fallback { 1 } else { 0 };
+            let new_enabled = if info.enabled { 1 } else { 0 };
+            dict_db.update_dict(name, info.priority, new_fallback, new_enabled)?;
+        }
     }
 
     if let Some(matches) = matches.subcommand_matches("rename") {
@@ -186,24 +193,10 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let words_file = matches.value_of("wordfile").unwrap_or(&config.words_file);
-    let failed_words_file = config.failed_words_file;
-    let failed_words_file = Path::new(&failed_words_file);
+    let finalized_path = &config.words_file.clone();
+    let words_file = Path::new(matches.value_of("wordfile").unwrap_or(finalized_path));
 
-    ace::export_words(
-        &dict_db,
-        config.anki,
-        Path::new(words_file),
-        failed_words_file,
-        config.media.fallback_forvo,
-        config.media.bail_on_empty,
-        config.media.custom_audio_server,
-        config.ankiconnect,
-        config.lookup.sort_freq,
-        config.is_japanese,
-        config.media.add_picture,
-    )
-    .await?;
+    ace::export_words(&dict_db, words_file).await?;
 
     Ok(())
 }

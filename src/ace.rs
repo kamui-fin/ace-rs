@@ -1,11 +1,10 @@
+use crate::anki::{AnkiConnect, Media};
 use crate::{
     anki::NoteData,
+    config::Config,
     dict::{lookup, DictDb},
     media::{fetch_audio_server, forvo, get_sent, google_img},
-};
-use crate::{
-    anki::{AnkiConnect, DeckModelInfo, Media},
-    config::AnkiConnectConfig,
+    CONFIG,
 };
 use anyhow::{Context, Result};
 use fs::OpenOptions;
@@ -14,27 +13,23 @@ use pinyin::{to_pinyin_vec, Pinyin};
 use std::{convert::TryInto, io::Write};
 use std::{fs, path::Path};
 
+pub fn get_config() -> Result<&'static Config> {
+    CONFIG.get().context("Failed to read config")
+}
+
 pub fn read_words_file(path: &Path) -> Result<Vec<String>> {
     let text = fs::read_to_string(path).with_context(|| "Failed to read words file")?;
     let words = text.lines().map(|l| l.to_string()).collect::<Vec<String>>();
     Ok(words)
 }
 
-pub async fn package_card(
-    dict_db: &DictDb,
-    word: &str,
-    forvo_fallback: bool,
-    bail_on_empty_media: bool,
-    custom_audio_server: &str,
-    sort_freq: bool,
-    is_japanese: bool,
-    add_picture: bool,
-) -> Result<Option<NoteData>> {
-    let sentence = get_sent(word, is_japanese)
+pub async fn package_card(dict_db: &DictDb, word: &str) -> Result<Option<NoteData>> {
+    let config = get_config()?;
+    let sentence = get_sent(word, config.is_japanese)
         .await
         .with_context(|| "Failed to fetch sentence")?;
 
-    let defs = &lookup(dict_db, word.to_string(), sort_freq, is_japanese)
+    let defs = &lookup(dict_db, word.to_string())
         .with_context(|| "Failed to lookup word in dictionary")?;
 
     if defs.is_empty() {
@@ -47,8 +42,8 @@ pub async fn package_card(
         .collect::<Vec<String>>()
         .join("<br><br>");
 
-    let image_res = if add_picture {
-        google_img(word.to_string(), is_japanese)
+    let image_res = if config.media.add_picture {
+        google_img(word.to_string(), config.is_japanese)
             .await
             .with_context(|| "Failed to fetch image")
     } else {
@@ -57,12 +52,12 @@ pub async fn package_card(
 
     let mut audio_res;
 
-    if !custom_audio_server.is_empty() {
-        audio_res = fetch_audio_server(word, custom_audio_server)
+    if !config.media.custom_audio_server.is_empty() {
+        audio_res = fetch_audio_server(word, &config.media.custom_audio_server)
             .await
             .with_context(|| "Failed to fetch audio");
 
-        if audio_res.is_err() && forvo_fallback {
+        if audio_res.is_err() && config.media.fallback_forvo {
             audio_res = forvo(word).await.with_context(|| "Failed to fetch audio");
         }
     } else {
@@ -72,7 +67,7 @@ pub async fn package_card(
     let image: Media;
     let audio: Media;
 
-    if (image_res.is_err() || audio_res.is_err()) && bail_on_empty_media {
+    if (image_res.is_err() || audio_res.is_err()) && config.media.bail_on_empty {
         image = image_res?;
         audio = audio_res?;
     } else {
@@ -80,7 +75,7 @@ pub async fn package_card(
         audio = audio_res.unwrap_or_default();
     }
 
-    let word_pinyin = if !is_japanese {
+    let word_pinyin = if !config.is_japanese {
         format!(
             "{}[{}]",
             word,
@@ -102,22 +97,12 @@ pub async fn package_card(
     Ok(Some(ndata))
 }
 
-pub async fn export_words(
-    dict_db: &DictDb,
-    deck_model_info: DeckModelInfo,
-    words_file: &Path,
-    failed_words_file: &Path,
-    forvo_fallback: bool,
-    bail_on_empty_media: bool,
-    custom_audio_server: String,
-    anki_connect_config: AnkiConnectConfig,
-    sort_freq: bool,
-    is_japanese: bool,
-    add_picture: bool,
-) -> Result<()> {
+pub async fn export_words(dict_db: &DictDb, words_file: &Path) -> Result<()> {
+    let config = get_config()?;
+    let failed_file = Path::new(&config.failed_words_file);
     let anki_connect = AnkiConnect {
-        port: anki_connect_config.port,
-        address: anki_connect_config.address,
+        port: config.ankiconnect.port,
+        address: config.ankiconnect.address.clone(),
     };
     anki_connect.status().await?;
 
@@ -133,28 +118,18 @@ pub async fn export_words(
     );
     bar.inc(0);
     for word in words {
-        let ndata = package_card(
-            &dict_db,
-            &word,
-            forvo_fallback,
-            bail_on_empty_media,
-            &custom_audio_server,
-            sort_freq,
-            is_japanese,
-            add_picture,
-        )
-        .await?;
+        let ndata = package_card(dict_db, &word).await?;
         if let Some(ndata) = ndata {
             notes.push(ndata);
             bar.inc(1);
-        } else if failed_words_file.is_file() {
-            let mut file = OpenOptions::new().append(true).open(failed_words_file)?;
+        } else if failed_file.is_file() {
+            let mut file = OpenOptions::new().append(true).open(failed_file)?;
             writeln!(file, "{}", word)?;
         }
     }
     bar.finish();
 
-    anki_connect.bulk_add_cards(deck_model_info, notes).await?;
+    anki_connect.bulk_add_cards(notes).await?;
 
     Ok(())
 }
