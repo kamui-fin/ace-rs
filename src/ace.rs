@@ -1,17 +1,16 @@
 use crate::{
     anki::NoteData,
-    config::LookupConfig,
     dict::{lookup, DictDb},
-    media::{forvo, get_sent, google_img},
+    media::{fetch_audio_server, forvo, get_sent, google_img},
 };
 use crate::{
     anki::{AnkiConnect, DeckModelInfo, Media},
     config::AnkiConnectConfig,
-    media::audio_dir,
 };
 use anyhow::{Context, Result};
 use fs::OpenOptions;
 use indicatif::{ProgressBar, ProgressStyle};
+use pinyin::{to_pinyin_vec, Pinyin};
 use std::{convert::TryInto, io::Write};
 use std::{fs, path::Path};
 
@@ -26,51 +25,52 @@ pub async fn package_card(
     word: &str,
     forvo_fallback: bool,
     bail_on_empty_media: bool,
-    custom_audio_dir: &str,
-    media_limit: usize,
-    audio_regex: &str,
+    custom_audio_server: &str,
     sort_freq: bool,
+    is_japanese: bool,
+    add_picture: bool,
 ) -> Result<Option<NoteData>> {
-    let sentence = get_sent(word)
+    let sentence = get_sent(word, is_japanese)
         .await
         .with_context(|| "Failed to fetch sentence")?;
 
-    let defs = &lookup(dict_db, word.to_string(), sort_freq)
+    let defs = &lookup(dict_db, word.to_string(), sort_freq, is_japanese)
         .with_context(|| "Failed to lookup word in dictionary")?;
 
     if defs.is_empty() {
         return Ok(None);
     }
 
-    let definition = defs
+    let meaning = defs
         .iter()
         .map(|def| def.meaning.replace("\n", "<br>"))
         .collect::<Vec<String>>()
         .join("<br><br>");
 
-    let image_res = google_img(word.to_string(), media_limit)
-        .await
-        .with_context(|| "Failed to fetch image");
+    let image_res = if add_picture {
+        google_img(word.to_string(), is_japanese)
+            .await
+            .with_context(|| "Failed to fetch image")
+    } else {
+        Ok(Media::default())
+    };
 
     let mut audio_res;
 
-    if !custom_audio_dir.is_empty() {
-        audio_res = audio_dir(word, audio_regex, media_limit, Path::new(custom_audio_dir))
+    if !custom_audio_server.is_empty() {
+        audio_res = fetch_audio_server(word, custom_audio_server)
+            .await
             .with_context(|| "Failed to fetch audio");
 
         if audio_res.is_err() && forvo_fallback {
-            audio_res = forvo(word, media_limit)
-                .await
-                .with_context(|| "Failed to fetch audio");
+            audio_res = forvo(word).await.with_context(|| "Failed to fetch audio");
         }
     } else {
-        audio_res = forvo(word, media_limit)
-            .await
-            .with_context(|| "Failed to fetch audio");
+        audio_res = forvo(word).await.with_context(|| "Failed to fetch audio");
     }
 
-    let image: Vec<Media>;
-    let audio: Vec<Media>;
+    let image: Media;
+    let audio: Media;
 
     if (image_res.is_err() || audio_res.is_err()) && bail_on_empty_media {
         image = image_res?;
@@ -80,12 +80,23 @@ pub async fn package_card(
         audio = audio_res.unwrap_or_default();
     }
 
+    let word_pinyin = if !is_japanese {
+        format!(
+            "{}[{}]",
+            word,
+            to_pinyin_vec(word, Pinyin::with_tone_num_end).join(" ")
+        )
+    } else {
+        String::from("")
+    };
+
     let ndata = NoteData {
         word: word.to_string(),
         sentence,
-        meaning: definition,
+        meaning,
         image,
         audio,
+        word_pinyin,
     };
 
     Ok(Some(ndata))
@@ -98,11 +109,11 @@ pub async fn export_words(
     failed_words_file: &Path,
     forvo_fallback: bool,
     bail_on_empty_media: bool,
-    custom_audio_dir: String,
-    media_limit: usize,
+    custom_audio_server: String,
     anki_connect_config: AnkiConnectConfig,
-    audio_regex: String,
     sort_freq: bool,
+    is_japanese: bool,
+    add_picture: bool,
 ) -> Result<()> {
     let anki_connect = AnkiConnect {
         port: anki_connect_config.port,
@@ -127,10 +138,10 @@ pub async fn export_words(
             &word,
             forvo_fallback,
             bail_on_empty_media,
-            &custom_audio_dir,
-            media_limit,
-            &audio_regex,
+            &custom_audio_server,
             sort_freq,
+            is_japanese,
+            add_picture,
         )
         .await?;
         if let Some(ndata) = ndata {

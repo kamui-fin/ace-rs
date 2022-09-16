@@ -13,6 +13,7 @@ pub struct Config {
     pub media: MediaConfig,
     pub ankiconnect: AnkiConnectConfig,
     pub lookup: LookupConfig,
+    pub is_japanese: bool,
 }
 
 #[derive(Serialize, Hash, Deserialize, Debug)]
@@ -24,11 +25,10 @@ pub struct DictInfo {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MediaConfig {
-    pub custom_audio_dir: String,
-    pub regex: String,
+    pub custom_audio_server: String,
     pub fallback_forvo: bool,
     pub bail_on_empty: bool,
-    pub limit: usize,
+    pub add_picture: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

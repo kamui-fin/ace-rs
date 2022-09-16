@@ -17,7 +17,7 @@ fn get_matches() -> ArgMatches<'static> {
     let matches = App::new("ace")
         .version("1.0")
         .author("Kamui")
-        .about("Anime card exporter for Anki")
+        .about("Vocab card exporter for Anki")
         .arg(
             Arg::with_name("config")
                 .short("c")
@@ -197,11 +197,11 @@ async fn main() -> Result<()> {
         failed_words_file,
         config.media.fallback_forvo,
         config.media.bail_on_empty,
-        config.media.custom_audio_dir,
-        config.media.limit,
+        config.media.custom_audio_server,
         config.ankiconnect,
-        config.media.regex,
         config.lookup.sort_freq,
+        config.is_japanese,
+        config.media.add_picture,
     )
     .await?;
 

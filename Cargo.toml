@@ -24,3 +24,4 @@ json5 = "0.4.1"
 uuid = { version = "0.8", features = ["v4"] }
 indicatif = "0.16.2"
 rand = "0.8.5"
+pinyin = "0.9"

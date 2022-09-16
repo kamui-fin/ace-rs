@@ -1,35 +1,31 @@
 words_file = "/home/user/words.txt"
 failed_words_file = "/home/user/failed_words.txt"
+is_japanese = false # chinese
 
 [anki]
-deck = "Testing"
-model = "Vocab Cards"
+deck = "Deck"
+model = "Note Type"
 word_field = "Word"
-sent_field = "Expression"
-dict_field = "Meaning"
+sent_field = "Sentence"
+dict_field = "Definition"
 img_field = "Picture"
 audio_field = "Audio"
+word_pinyin_field = "Word + Word Pinyin"
 
 [ankiconnect]
 port = 8765
 address = "127.0.0.1"
 
-[dict."jmdict"]
+[dict."cedict"]
 enabled = true
-priority = 0
-fallback = true
-
-[dict."shinmeikai"]
-enabled = true
-priority = 4
+priority = 9999
 fallback = false
 
 [lookup]
 sort_freq = true
 
 [media]
-custom_audio_dir = "/home/user/Audio Bank"
-regex = "- %word%.mp3$"
+custom_audio_server = "http://localhost:5000/?expression="
+add_picture = false
 fallback_forvo = false
 bail_on_empty = true
-limit = 1

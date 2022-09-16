@@ -31,7 +31,7 @@ pub struct DbDictionary {
 #[derive(Debug)]
 pub struct DbDictEntry {
     pub id: i64,
-    pub kanji: String,
+    pub expression: String,
     pub reading: String,
     pub meaning: String,
     pub dict_id: i64,
@@ -39,7 +39,7 @@ pub struct DbDictEntry {
 
 #[derive(Debug, Deserialize)]
 struct YomichanEntryV1 {
-    kanji: String,
+    expression: String,
     reading: String,
     definition_tags: String,
     rule_identifiers: String,
@@ -51,7 +51,7 @@ struct YomichanEntryV1 {
 
 #[derive(Debug, Deserialize)]
 pub struct YomichanFrequencyEntry {
-    pub kanji: String,
+    pub expression: String,
     pub tag: String,
     pub frequency: i64,
 }
@@ -259,8 +259,8 @@ impl DictDb {
     ) -> rusqlite::Result<()> {
         for meaning in entry.meanings {
             tx.execute(
-                "INSERT INTO entries (kanji, reading, meaning, dict_id) VALUES (?1, ?2, ?3, ?4)",
-                params![entry.kanji, entry.reading, meaning, dict_id],
+                "INSERT INTO entries (expression, reading, meaning, dict_id) VALUES (?1, ?2, ?3, ?4)",
+                params![entry.expression, entry.reading, meaning, dict_id],
             )?;
         }
 
@@ -272,7 +272,7 @@ impl DictDb {
         avg: bool,
         tx: &Transaction,
     ) -> rusqlite::Result<()> {
-        let word = &entry.kanji;
+        let word = &entry.expression;
         let new_freq = if avg {
             let avg_freq = tx.query_row::<i64, _, _>(
                 "SELECT freq FROM freq WHERE word = ?1",
@@ -299,8 +299,13 @@ impl DictDb {
         word: &str,
         fallback: bool,
         sort_freq: bool,
+        is_japanese: bool,
     ) -> rusqlite::Result<Vec<DbDictEntry>> {
-        let lookup_column = if all_kana(word) { "reading" } else { "kanji" };
+        let lookup_column = if all_kana(word) && is_japanese {
+            "reading"
+        } else {
+            "expression"
+        };
         let sort_sql = if sort_freq {
             ", (CASE WHEN freq.freq IS NULL then 1 ELSE 0 END), freq ASC"
         } else {
@@ -309,7 +314,7 @@ impl DictDb {
         let sql = format!(
             "SELECT entries.*, freq.freq FROM entries 
             INNER JOIN dicts ON entries.dict_id = dicts.id 
-            LEFT JOIN freq ON entries.kanji = freq.word
+            LEFT JOIN freq ON entries.expression = freq.word
             WHERE enabled = 1 AND fallback = :fallback AND {} = :word
             ORDER BY priority DESC{}",
             lookup_column, sort_sql
@@ -323,7 +328,7 @@ impl DictDb {
             |row| {
                 Ok(DbDictEntry {
                     id: row.get(0)?,
-                    kanji: row.get(1)?,
+                    expression: row.get(1)?,
                     reading: row.get(2)?,
                     meaning: row.get(3)?,
                     dict_id: row.get(4)?,
@@ -337,11 +342,16 @@ impl DictDb {
         Ok(entries)
     }
 
-    pub fn lookup_word(&self, word: &str, sort_freq: bool) -> rusqlite::Result<Vec<DbDictEntry>> {
-        let mut entries = self._lookup_word(word, false, sort_freq)?;
+    pub fn lookup_word(
+        &self,
+        word: &str,
+        sort_freq: bool,
+        is_japanese: bool,
+    ) -> rusqlite::Result<Vec<DbDictEntry>> {
+        let mut entries = self._lookup_word(word, false, sort_freq, is_japanese)?;
         // fallback
         if entries.is_empty() {
-            entries = self._lookup_word(word, true, sort_freq)?;
+            entries = self._lookup_word(word, true, sort_freq, is_japanese)?;
         }
 
         Ok(entries)
@@ -380,7 +390,7 @@ impl DictConn {
 
             CREATE TABLE IF NOT EXISTS entries (
                   id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                  kanji           TEXT NOT NULL,
+                  expression      TEXT NOT NULL,
                   reading         TEXT,
                   meaning         TEXT NOT NULL,
                   dict_id         INTEGER NOT NULL,
@@ -394,21 +404,31 @@ impl DictConn {
                   freq            INTEGER NOT NULL
             );
 
-            CREATE INDEX IF NOT EXISTS kanji_idx ON entries(kanji);
+            CREATE INDEX IF NOT EXISTS word_idx ON entries(expression);
             ",
         )
     }
 }
 
-pub fn lookup(dict_db: &DictDb, word: String, sort_freq: bool) -> Result<Vec<DbDictEntry>> {
+pub fn lookup(
+    dict_db: &DictDb,
+    word: String,
+    sort_freq: bool,
+    is_japanese: bool,
+) -> Result<Vec<DbDictEntry>> {
     let mut results: Vec<DbDictEntry> = vec![];
-    let deinflect_json = include_str!("../data/deinflect.json");
-    let deinflector = deinflect::Deinflector::new(deinflect_json);
-    let deinflected_forms = deinflector.deinflect(word);
 
-    for form in deinflected_forms {
-        let lookup_res = dict_db.lookup_word(&form.term, sort_freq)?;
-        results.extend(lookup_res);
+    if is_japanese {
+        let deinflect_json = include_str!("../data/deinflect.json");
+        let deinflector = deinflect::Deinflector::new(deinflect_json);
+        let deinflected_forms = deinflector.deinflect(word);
+
+        for form in deinflected_forms {
+            let lookup_res = dict_db.lookup_word(&form.term, sort_freq, true)?;
+            results.extend(lookup_res);
+        }
+    } else {
+        results = dict_db.lookup_word(&word, sort_freq, false)?;
     }
 
     Ok(results)

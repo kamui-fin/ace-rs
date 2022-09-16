@@ -18,18 +18,13 @@ pub struct DeckModelInfo {
     pub dict_field: String,
     pub img_field: String,
     pub audio_field: String,
+    pub word_pinyin_field: String,
 }
 
-#[derive(Debug)]
-pub enum Source {
-    Path(String),
-    Url(String),
-}
-
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Media {
     pub filename: String,
-    pub source: Source,
+    pub url: String,
 }
 
 #[derive(Debug)]
@@ -37,8 +32,9 @@ pub struct NoteData {
     pub word: String,
     pub sentence: String,
     pub meaning: String,
-    pub image: Vec<Media>,
-    pub audio: Vec<Media>,
+    pub image: Media,
+    pub audio: Media,
+    pub word_pinyin: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -71,52 +67,23 @@ impl AnkiConnect {
         note_data: &NoteData,
     ) -> serde_json::Value {
         let empty_str = String::from("");
-        let audio_data = note_data
-            .audio
-            .iter()
-            .map(|audio| {
-                let audio_url;
-                let audio_path;
+        let audio_data = json!({
+            "url": note_data.audio.url,
+            "filename": note_data.audio.filename,
+            "fields": [
+                deck_model_info.audio_field
+            ]
+        });
 
-                match &audio.source {
-                    Source::Url(url) => {
-                        audio_url = url;
-                        audio_path = String::from("");
-                    }
-                    Source::Path(path) => {
-                        audio_path = path.to_string();
-                        audio_url = &empty_str;
-                    }
-                };
-                json!({
-                    "url": audio_url,
-                    "path": audio_path,
-                    "filename": audio.filename,
-                    "fields": [
-                        deck_model_info.audio_field
-                    ]
-                })
+        let picture_data = {
+            json!({
+                "url": note_data.image.url,
+                "filename": note_data.image.filename,
+                "fields": [
+                    deck_model_info.img_field
+                ]
             })
-            .collect::<Vec<Value>>();
-
-        let picture_data = note_data
-            .image
-            .iter()
-            .map(|pic| {
-                let picture_url = if let Source::Url(url) = &pic.source {
-                    url
-                } else {
-                    &empty_str
-                };
-                json!({
-                    "url": picture_url,
-                    "filename": pic.filename,
-                    "fields": [
-                        deck_model_info.img_field
-                    ]
-                })
-            })
-            .collect::<Vec<Value>>();
+        };
 
         json!({
             "deckName": deck_model_info.deck,
@@ -125,6 +92,7 @@ impl AnkiConnect {
                 &deck_model_info.word_field: note_data.word,
                 &deck_model_info.sent_field: note_data.sentence,
                 &deck_model_info.dict_field: note_data.meaning,
+                &deck_model_info.word_pinyin_field: note_data.word_pinyin,
             },
             "options": {
                 "allowDuplicate": false,

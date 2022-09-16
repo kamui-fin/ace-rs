@@ -1,22 +1,20 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use regex::Regex;
 use scraper::{Html, Selector};
 use serde_json::Value;
-use std::fs;
 use std::{io::Cursor, path::Path};
 use uuid::Uuid;
 
 use crate::anki::Media;
-use crate::anki::Source;
 
 fn with_uuid(prefix: String) -> String {
     let uuid = Uuid::new_v4().to_string();
     return format!("{}-{}", prefix, uuid);
 }
 
-pub async fn get_sent(word: &str) -> Result<String> {
+async fn fetch_massif(word: &str) -> Result<String> {
     let base_url = String::from("https://massif.la/ja/search?q=");
     let resp = reqwest::get(base_url + word).await?;
 
@@ -26,6 +24,26 @@ pub async fn get_sent(word: &str) -> Result<String> {
     let sent_text = sent_div.text().collect::<Vec<_>>().join("");
 
     Ok(sent_text)
+}
+
+async fn fetch_chineseboost(word: &str) -> Result<String> {
+    let base_url = String::from("https://www.chineseboost.com/chinese-example-sentences?query=");
+    let resp = reqwest::get(base_url + word).await?;
+
+    let document = Html::parse_document(&resp.text().await?);
+    let selector = Selector::parse(".liju .hanzi.sentence").unwrap();
+    let sent_div = document.select(&selector).next().unwrap();
+    let sent_text = sent_div.text().collect::<Vec<_>>().join("");
+
+    Ok(sent_text)
+}
+
+pub async fn get_sent(word: &str, is_japanese: bool) -> Result<String> {
+    if is_japanese {
+        fetch_massif(word).await
+    } else {
+        fetch_chineseboost(word).await
+    }
 }
 
 async fn download_file(url: &str, output_path: &Path, extension: Option<&str>) -> Result<()> {
@@ -52,60 +70,37 @@ async fn download_file(url: &str, output_path: &Path, extension: Option<&str>) -
     Ok(())
 }
 
-pub fn audio_dir(word: &str, regex: &str, num: usize, directory: &Path) -> Result<Vec<Media>> {
-    let mut audio_files: Vec<Media> = vec![];
-    let mut count = 0;
-    let re = Regex::new(&regex.replace("%word%", word)).context("Unable to parse regex")?;
-    for entry in fs::read_dir(directory)? {
-        if count >= num {
-            break;
-        }
-        let entry = entry?;
-        let path = entry.path();
-        let path_str = path.to_str().unwrap();
-        if path.is_file() && re.is_match(path_str) {
-            let filename = with_uuid(word.to_string());
-            let media = Media {
-                filename,
-                source: Source::Path(path_str.to_string()),
-            };
-            audio_files.push(media);
-            count += 1;
-        }
-    }
-    Ok(audio_files)
+pub async fn fetch_audio_server(word: &str, custom_audio_server: &str) -> Result<Media> {
+    let url = format!("{}{}", custom_audio_server, word);
+    let res = reqwest::get(&url).await?.error_for_status()?;
+    let filename = with_uuid(word.to_string());
+
+    Ok(Media { url, filename })
 }
 
-pub async fn forvo(word: &str, num: usize) -> Result<Vec<Media>> {
+pub async fn forvo(word: &str) -> Result<Media> {
     let url = format!("https://forvo.com/search/{}/", word);
 
     let content = reqwest::get(&url).await?.text().await?;
 
-    let mut pronunciations = vec![];
-
     let regex_sequence_pattern = Regex::new(r"(Play\(\w+,')(\w+=*)").unwrap();
-    for caps in regex_sequence_pattern.captures_iter(content.as_str()) {
-        let code_sequence = caps.get(2).unwrap().as_str();
-        pronunciations.push(code_sequence.to_string());
-    }
-
-    let urls = pronunciations[..num]
-        .iter()
-        .map(|p| {
-            let url = String::from("https://forvo.com/player-mp3Handler.php?path=") + p;
-            let filename = with_uuid(word.to_string());
-            Media {
-                source: Source::Url(url),
-                filename,
-            }
-        })
-        .collect::<Vec<Media>>();
-
-    Ok(urls)
+    let code_sequence = regex_sequence_pattern
+        .captures_iter(content.as_str())
+        .next()
+        .ok_or("Could not find forvo pronunciation")
+        .unwrap()
+        .get(2)
+        .unwrap()
+        .as_str();
+    let url = String::from("https://forvo.com/player-mp3Handler.php?path=") + code_sequence;
+    let filename = with_uuid(word.to_string());
+    Ok(Media { url, filename })
 }
 
-async fn get_fullres_urls(word: &str) -> Result<Vec<String>> {
-    let url = format!("https://google.co.jp/search?q={}&tbm=isch", word);
+async fn get_fullres_urls(word: &str, is_japanese: bool) -> Result<Vec<String>> {
+    let country = if is_japanese { "co.jp" } else { "com.hk" };
+
+    let url = format!("https://google.{}/search?q={}&tbm=isch", country, word);
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Linux; Android 9; SM-G960F Build/PPR1.180610.011; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/74.0.3729.157 Mobile Safari/537.36")
         .build()?;
@@ -132,34 +127,18 @@ async fn get_fullres_urls(word: &str) -> Result<Vec<String>> {
         }
     }
 
-    return Ok(results);
+    Ok(results)
 }
 
-pub async fn google_img(word: String, num: usize) -> Result<Vec<Media>> {
-    // try to only shuffle first 10 for relevance
-    let urls = get_fullres_urls(&word).await?;
-    let max_offset = if urls.len() < num {
-        urls.len()
-    } else if urls.len() < num + 10 {
-        num
-    } else {
-        num + 10
-    };
+pub async fn google_img(word: String, is_japanese: bool) -> Result<Media> {
+    let urls = get_fullres_urls(&word, is_japanese).await?;
+    let max_offset = if urls.len() < 10 { urls.len() } else { 10 };
     let mut shuffled = urls[..max_offset].to_vec();
     shuffled.shuffle(&mut thread_rng());
-    if num < shuffled.len() {
-        shuffled = shuffled[..num].to_vec();
-    }
-    let medias = shuffled
-        .iter()
-        .map(|url| {
-            let filename = with_uuid(word.clone());
-            Media {
-                source: Source::Url(url.to_string()),
-                filename,
-            }
-        })
-        .collect::<Vec<Media>>();
-
-    Ok(medias)
+    let url = shuffled.get(0).ok_or("Could not find image").unwrap();
+    let filename = with_uuid(word.clone());
+    Ok(Media {
+        url: url.to_string(),
+        filename,
+    })
 }
