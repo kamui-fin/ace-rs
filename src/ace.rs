@@ -17,17 +17,33 @@ pub fn get_config() -> Result<&'static Config> {
     CONFIG.get().context("Failed to read config")
 }
 
-pub fn read_words_file(path: &Path) -> Result<Vec<String>> {
+// Returns [(word, sentence)]
+pub fn read_words_file(path: &Path) -> Result<Vec<(String, String)>> {
     let text = fs::read_to_string(path).with_context(|| "Failed to read words file")?;
-    let words = text.lines().map(|l| l.to_string()).collect::<Vec<String>>();
-    Ok(words)
+    let mut word_sentence_pairs: Vec<(String, String)> = vec![];
+    for line in text.lines() {
+        if let Some((word, sentence)) = line.split_once(" ") {
+            word_sentence_pairs.push((word.to_string(), sentence.to_string()))
+        } else {
+            word_sentence_pairs.push((line.to_string(), "".to_string()))
+        }
+    }
+    Ok(word_sentence_pairs)
 }
 
-pub async fn package_card(dict_db: &DictDb, word: &str) -> Result<Option<NoteData>> {
+pub async fn package_card(
+    dict_db: &DictDb,
+    word: &str,
+    sentence: String,
+) -> Result<Option<NoteData>> {
     let config = get_config()?;
-    let sentence = get_sent(word, config.is_japanese)
-        .await
-        .with_context(|| "Failed to fetch sentence")?;
+    let sentence = if sentence.is_empty() {
+        get_sent(word, config.is_japanese)
+            .await
+            .with_context(|| "Failed to fetch sentence")?
+    } else {
+        sentence
+    };
 
     let defs = &lookup(dict_db, word.to_string())
         .with_context(|| "Failed to lookup word in dictionary")?;
@@ -107,18 +123,19 @@ pub async fn export_words(dict_db: &DictDb, words_file: &Path) -> Result<()> {
     anki_connect.status().await?;
 
     println!("Starting to generate card data...");
-    let words = read_words_file(words_file)?;
+    let word_sentences = read_words_file(words_file)?;
     let mut notes = vec![];
 
-    let bar = ProgressBar::new(words.len().try_into().unwrap());
+    let bar = ProgressBar::new(word_sentences.len().try_into().unwrap());
     bar.set_style(
         ProgressStyle::default_bar()
             .template("[{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos:>7}/{len:7}")
             .progress_chars("#>-"),
     );
     bar.inc(0);
-    for word in words {
-        let ndata = package_card(dict_db, &word).await?;
+    for pair in word_sentences {
+        let (word, sentence) = pair;
+        let ndata = package_card(dict_db, &word, sentence).await?;
         if let Some(ndata) = ndata {
             notes.push(ndata);
             bar.inc(1);
