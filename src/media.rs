@@ -77,7 +77,7 @@ async fn download_file(url: &str, output_path: &Path, extension: Option<&str>) -
 }
 
 pub async fn fetch_audio_server(word: &str, custom_audio_server: &str) -> Result<Media> {
-    let url = format!("{}{}", custom_audio_server, word);
+    let url = custom_audio_server.replacen("{}", word, 1);
     reqwest::get(&url).await?.error_for_status()?;
     let filename = with_uuid(word.to_string());
 

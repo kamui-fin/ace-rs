@@ -190,7 +190,7 @@ async fn main() -> Result<()> {
             sentence = ctx.get_contents()?;
 
             let mut elapsed_ms = 0;
-            let wait_time_ms = 500; // ms
+            let wait_time_ms = 50; // ms
             let max_time = 5000;
 
             notifica::notify(
@@ -239,6 +239,10 @@ async fn main() -> Result<()> {
 
     if matches.subcommand_matches("get_dicts").is_some() {
         let dicts = dict_db.get_all_dicts()?;
+        if dicts.is_empty() {
+            println!("There are no dictionaries imported.");
+            return Ok(());
+        }
         println!(
             "{0: <10} | {1: <10} | {2: <10} | {3: <10}",
             "title", "priority", "fallback", "enabled"
@@ -254,6 +258,9 @@ async fn main() -> Result<()> {
 
     let finalized_path = &config.words_file.clone();
     let words_file = Path::new(matches.value_of("wordfile").unwrap_or(finalized_path));
+    if dict_db.get_all_dicts()?.is_empty() {
+        bail!("There are no dictionaries imported.")
+    }
 
     ace::export_words(&dict_db, words_file).await?;
 

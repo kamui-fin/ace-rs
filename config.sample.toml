@@ -1,9 +1,10 @@
-# NOTE: leave field as an empty string if optional
+# NOTE: Do not delete any fields here
+# If a field is not applicable or an undesirable optional feature, set them to default values (e.g. false or empty value)
 
 # each line has its own word
 # will be used for batch-generation functionality
 words_file = "/home/user/words.txt"
-# words that could not be added are appended to this file
+# words that could not be added are appended to this file (optional)
 failed_words_file = "/home/user/failed_words.txt"
 # language is by default chinese
 # you can change it by setting this to true
@@ -22,7 +23,7 @@ audio_field = "Audio"
 word_pinyin_field = "Word + Word Pinyin"
 
 # make sure to get the AnkiConnect addon first
-# usually this config can be left alone
+# usually this part can be left alone
 [ankiconnect]
 port = 8765
 address = "127.0.0.1"
@@ -30,7 +31,7 @@ address = "127.0.0.1"
 [duplicate_handler]
 skip_if_dup = true
 # if skip_if_dup = true, configure these
-scope = "deck" # or "collection"
+scope = "collection" # or "deck" for looking under a specific deck only
 # if deck was previously selected, check this deck, as well as its subdecks
 deck = "Deck Name" 
 
@@ -45,15 +46,15 @@ fallback = false
 
 [lookup]
 # use a custom loaded frequency list to sort results based on their frequency
-sort_freq = true
+sort_freq = false
 
 [media]
 # if you have a custom audio server, you can configure it here
-# format the link like such, where the word gets appended to the link
-custom_audio_server = "http://localhost:5000/?expression="
+# format the link like such, where {} gets replaced by the actual word
+custom_audio_server = "http://localhost:5000/?expression={}"
 # enable/disable picture generation
 add_picture = false
 # if the audio server fails to return results, use forvo instead
-fallback_forvo = false
+fallback_forvo = true
 # if media could not be fetched, simply exit
-bail_on_empty = true
+bail_on_empty = false
