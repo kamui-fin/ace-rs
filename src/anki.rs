@@ -67,8 +67,8 @@ impl AnkiConnect {
         &self,
         deck_model_info: &DeckModelInfo,
         note_data: &NoteData,
-    ) -> serde_json::Value {
-        let empty_str = String::from("");
+    ) -> Result<serde_json::Value> {
+        let config = get_config()?;
         let audio_data = json!({
             "url": note_data.audio.url,
             "filename": note_data.audio.filename,
@@ -87,7 +87,7 @@ impl AnkiConnect {
             })
         };
 
-        json!({
+        Ok(json!({
             "deckName": deck_model_info.deck,
             "modelName": deck_model_info.model,
             "fields": {
@@ -97,23 +97,46 @@ impl AnkiConnect {
                 &deck_model_info.word_pinyin_field: note_data.word_pinyin,
             },
             "options": {
-                "allowDuplicate": false,
-                "duplicateScope": "deck",
+                "allowDuplicate": !config.duplicate_handler.skip_if_dup,
+                "duplicateScope": config.duplicate_handler.scope,
                 "duplicateScopeOptions": {
-                    "checkChildren": false,
-                    "checkAllModels": false
+                    "deckName": config.duplicate_handler.deck,
+                    "checkChildren": true,
+                    "checkAllModels": true
                 }
             },
             "audio": audio_data,
             "picture": picture_data
-        })
+        }))
+    }
+
+    pub async fn add_card(&self, note: NoteData) -> Result<Value> {
+        let config = get_config()?;
+        let anki_note = self.get_note_json(&config.anki, &note).unwrap();
+        let post_data = json!({
+            "action": "addNote",
+            "version": 6,
+            "params": {
+                "note": anki_note
+            }
+        });
+        let client = reqwest::Client::new();
+        let res = client
+            .post(format!("http://{}:{}", self.address, self.port))
+            .json(&post_data)
+            .send()
+            .await
+            .with_context(|| "Failed to connect to AnkiConnect. Is Anki running?".to_string())?
+            .json::<Value>()
+            .await?;
+        Ok(res)
     }
 
     pub async fn bulk_add_cards(&self, notes: Vec<NoteData>) -> Result<Value> {
         let config = get_config()?;
         let notes = notes
             .iter()
-            .map(|note| self.get_note_json(&config.anki, note))
+            .map(|note| self.get_note_json(&config.anki, note).unwrap())
             .collect::<Vec<serde_json::Value>>();
         let post_data = json!({
             "action": "addNotes",
@@ -136,7 +159,7 @@ impl AnkiConnect {
             .json(&post_data)
             .send()
             .await
-            .with_context(|| format!("Failed to connect to AnkiConnect. Is Anki running?"))?
+            .with_context(|| "Failed to connect to AnkiConnect. Is Anki running?".to_string())?
             .json::<Value>()
             .await?;
         pb.finish_with_message("Done");

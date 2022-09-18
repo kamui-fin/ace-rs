@@ -27,6 +27,13 @@ word_pinyin_field = "Word + Word Pinyin"
 port = 8765
 address = "127.0.0.1"
 
+[duplicate_handler]
+skip_if_dup = true
+# if skip_if_dup = true, configure these
+scope = "deck" # or "collection"
+# if deck was previously selected, check this deck, as well as its subdecks
+deck = "Deck Name" 
+
 # each individual dictionary has a config section like this
 [dict."cedict"]
 enabled = true

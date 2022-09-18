@@ -5,12 +5,15 @@ mod deinflect;
 mod dict;
 mod media;
 
-use ace::get_config;
+use ace::{get_config, package_card};
+use anki::{AnkiConnect, NoteData};
+use core::time;
 use once_cell::sync::OnceCell;
-use std::{fs, path::Path};
+use std::{fs, path::Path, thread::sleep_ms};
 
 use anyhow::{bail, Result};
 use clap::{App, Arg, ArgMatches, SubCommand};
+use cli_clipboard::{ClipboardContext, ClipboardProvider};
 use config::Config;
 use dict::DictDb;
 use directories::BaseDirs;
@@ -37,6 +40,14 @@ fn get_matches() -> ArgMatches<'static> {
                 .value_name("FILE")
                 .help("Use a different words file")
                 .takes_value(true),
+        )
+        .subcommand(
+            SubCommand::with_name("add").arg(
+                Arg::with_name("with-sentence")
+                    .long("with-sentence")
+                    .short("s")
+                    .takes_value(false),
+            ),
         )
         .subcommand(
             SubCommand::with_name("import")
@@ -163,6 +174,54 @@ async fn main() -> Result<()> {
             let new_enabled = if info.enabled { 1 } else { 0 };
             dict_db.update_dict(name, info.priority, new_fallback, new_enabled)?;
         }
+    }
+
+    if let Some(matches) = matches.subcommand_matches("add") {
+        let anki_connect = AnkiConnect {
+            port: config.ankiconnect.port,
+            address: config.ankiconnect.address.clone(),
+        };
+        anki_connect.status().await?;
+        let mut ctx = ClipboardContext::new()?;
+
+        let mut sentence = String::new();
+        let mut word = sentence.clone();
+        if matches.is_present("with-sentence") {
+            sentence = ctx.get_contents()?;
+
+            let mut elapsed_ms = 0;
+            let wait_time_ms = 500; // ms
+            let max_time = 5000;
+
+            notifica::notify(
+                "Vocab Card",
+                &format!(
+                    "Copy a word to the clipboard within {} seconds",
+                    max_time / 1000
+                ),
+            );
+
+            while elapsed_ms <= max_time {
+                sleep_ms(wait_time_ms);
+                elapsed_ms += wait_time_ms;
+                word = ctx.get_contents()?;
+                if !word.is_empty() && word != sentence {
+                    break;
+                }
+            }
+
+            if word.is_empty() || word == sentence {
+                bail!("No word provided");
+            }
+        } else {
+            word = ctx.get_contents()?;
+        }
+        let note_data = package_card(&dict_db, &word, sentence).await?;
+        if let Some(note_data) = note_data {
+            anki_connect.add_card(note_data).await?;
+        }
+
+        return Ok(());
     }
 
     if let Some(matches) = matches.subcommand_matches("rename") {

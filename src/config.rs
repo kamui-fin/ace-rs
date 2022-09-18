@@ -14,6 +14,7 @@ pub struct Config {
     pub ankiconnect: AnkiConnectConfig,
     pub lookup: LookupConfig,
     pub is_japanese: bool,
+    pub duplicate_handler: DuplicateConfig,
 }
 
 #[derive(Serialize, Hash, Deserialize, Debug)]
@@ -40,6 +41,13 @@ pub struct AnkiConnectConfig {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LookupConfig {
     pub sort_freq: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DuplicateConfig {
+    pub skip_if_dup: bool,
+    pub scope: String,
+    pub deck: String,
 }
 
 impl Config {

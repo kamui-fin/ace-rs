@@ -98,7 +98,13 @@ ace get_dicts
 ```
 
 Example output:
+
 ```
 title      | priority   | fallback   | enabled
 cedict     | 9999       | false      | true
 ```
+
+## TODO
+
+- On-the-spot card generation with a hotkey
+- Fill default values for config and handle empty dict list case
