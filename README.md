@@ -22,7 +22,7 @@ Features include:
 
 The word information and accompanying media are packaged into individual cards and are sent straight to your anki deck with [AnkiConnect](https://ankiweb.net/shared/info/2055492159) at once.
 
-![demo](./screenshots/demo.mp4)
+https://user-images.githubusercontent.com/65237048/191131022-2eb7e5f2-6569-4d44-8f85-d8a8241a1499.mp4
 
 ## Installation
 
