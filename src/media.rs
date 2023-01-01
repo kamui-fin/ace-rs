@@ -1,10 +1,10 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use regex::Regex;
 use scraper::{Html, Selector};
 use serde_json::Value;
-use std::{io::Cursor, path::Path};
+use std::{collections::HashMap, io::Cursor, path::Path};
 use uuid::Uuid;
 
 use crate::anki::Media;
@@ -18,7 +18,7 @@ async fn general_text_select(url: &str, selector: &str) -> Result<String> {
     let resp = reqwest::get(url).await?;
     let document = Html::parse_document(&resp.text().await?);
     let selector = Selector::parse(selector).unwrap();
-    let sent_div = document.select(&selector).next().unwrap();
+    let sent_div = document.select(&selector).next().context("No sentence")?;
     let sent_text = sent_div.text().collect::<Vec<_>>().join("");
 
     Ok(sent_text)
@@ -32,8 +32,42 @@ async fn fetch_massif(word: &str) -> Result<String> {
     .await
 }
 
+async fn fetch_zaojv(word: &str) -> Result<String> {
+    let mut params = HashMap::new();
+    params.insert("wo", word);
+
+    let client = reqwest::Client::builder().build()?;
+    let resp = client
+        .post("https://zaojv.com/wordQueryDo.php")
+        .form(&params)
+        .send()
+        .await?;
+
+    let document = Html::parse_document(&resp.text().await?);
+    let selector = Selector::parse(".dotline a").unwrap();
+    let doc_link = document
+        .select(&selector)
+        .next()
+        .context("No sentence")?
+        .value()
+        .attr("href")
+        .context("No href")?;
+
+    let text_res = general_text_select(
+        format!("https://zaojv.com/{}", doc_link).as_str(),
+        "#student > div",
+    )
+    .await;
+    if let Ok(text) = &text_res {
+        if let Some((_, rest)) = text.split_once(" ") {
+            return Ok(rest.to_string());
+        }
+    }
+    text_res
+}
+
 async fn fetch_chineseboost(word: &str) -> Result<String> {
-    general_text_select(
+    let sentence = general_text_select(
         format!(
             "https://www.chineseboost.com/chinese-example-sentences?query={}",
             word
@@ -41,7 +75,14 @@ async fn fetch_chineseboost(word: &str) -> Result<String> {
         .as_str(),
         ".liju .hanzi.sentence",
     )
-    .await
+    .await;
+    if let Ok(sent) = &sentence {
+        if sent.contains(word) {
+            return sentence;
+        }
+    }
+    // try to search in zaojv.com as fallback
+    return fetch_zaojv(word).await;
 }
 
 pub async fn get_sent(word: &str, is_japanese: bool) -> Result<String> {
