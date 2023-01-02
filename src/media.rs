@@ -11,7 +11,7 @@ use crate::anki::Media;
 
 fn with_uuid(prefix: String) -> String {
     let uuid = Uuid::new_v4().to_string();
-    return format!("{}-{}", prefix, uuid);
+    format!("{}-{}", prefix, uuid)
 }
 
 async fn general_text_select(url: &str, selector: &str) -> Result<String> {
@@ -30,6 +30,26 @@ async fn fetch_massif(word: &str) -> Result<String> {
         "li.text-japanese > div:not(.result-meta)",
     )
     .await
+}
+
+fn trim_number(text: String) -> String {
+    let mut offset_map = HashMap::new();
+    offset_map.insert('1', 2); // exception: 1 and space
+    offset_map.insert('一', 2);
+    offset_map.insert('(', 3);
+    offset_map.insert('（', 3);
+    offset_map.insert('一', 2);
+
+    if text.starts_with("1 ") {
+        offset_map.insert('1', 1);
+    }
+
+    let new_text = text.replace(' ', "");
+    let mut chars = new_text.chars().peekable();
+    for _ in 0..offset_map[chars.peek().unwrap()] {
+        chars.next();
+    }
+    chars.collect::<String>()
 }
 
 async fn fetch_zaojv(word: &str) -> Result<String> {
@@ -58,10 +78,9 @@ async fn fetch_zaojv(word: &str) -> Result<String> {
         "#student > div",
     )
     .await;
+
     if let Ok(text) = &text_res {
-        if let Some((_, rest)) = text.split_once(" ") {
-            return Ok(rest.to_string());
-        }
+        return Ok(trim_number(text.to_string()));
     }
     text_res
 }

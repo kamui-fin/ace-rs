@@ -34,8 +34,8 @@ pub struct NoteData {
     pub word: String,
     pub sentence: String,
     pub meaning: String,
-    pub image: Media,
-    pub audio: Media,
+    pub image: Option<Media>,
+    pub audio: Option<Media>,
     pub word_pinyin: String,
 }
 
@@ -69,25 +69,8 @@ impl AnkiConnect {
         note_data: &NoteData,
     ) -> Result<serde_json::Value> {
         let config = get_config()?;
-        let audio_data = json!({
-            "url": note_data.audio.url,
-            "filename": note_data.audio.filename,
-            "fields": [
-                deck_model_info.audio_field
-            ]
-        });
 
-        let picture_data = {
-            json!({
-                "url": note_data.image.url,
-                "filename": note_data.image.filename,
-                "fields": [
-                    deck_model_info.img_field
-                ]
-            })
-        };
-
-        Ok(json!({
+        let mut res = json!({
             "deckName": deck_model_info.deck,
             "modelName": deck_model_info.model,
             "fields": {
@@ -105,9 +88,33 @@ impl AnkiConnect {
                     "checkAllModels": true
                 }
             },
-            "audio": audio_data,
-            "picture": picture_data
-        }))
+        });
+
+        if let Some(audio) = &note_data.audio {
+            let audio_data = json!({
+                "url": audio.url,
+                "filename": audio.filename,
+                "fields": [
+                    deck_model_info.audio_field
+                ]
+            });
+            res["audio"] = audio_data;
+        }
+
+        if let Some(image) = &note_data.image {
+            let picture_data = {
+                json!({
+                    "url": image.url,
+                    "filename": image.filename,
+                    "fields": [
+                        deck_model_info.img_field
+                    ]
+                })
+            };
+            res["picture"] = picture_data;
+        }
+
+        Ok(res)
     }
 
     pub async fn add_card(&self, note: NoteData) -> Result<Value> {

@@ -6,7 +6,7 @@ use crate::{
     media::{fetch_audio_server, forvo, get_sent, google_img},
     CONFIG,
 };
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use fs::OpenOptions;
 use indicatif::{ProgressBar, ProgressStyle};
 use pinyin::{to_pinyin_vec, Pinyin};
@@ -63,7 +63,7 @@ pub async fn package_card(
             .await
             .with_context(|| "Failed to fetch image")
     } else {
-        Ok(Media::default())
+        Err(anyhow!("Image not required"))
     };
 
     let mut audio_res;
@@ -80,15 +80,15 @@ pub async fn package_card(
         audio_res = forvo(word).await.with_context(|| "Failed to fetch audio");
     }
 
-    let image: Media;
-    let audio: Media;
+    let image: Option<Media>;
+    let audio: Option<Media>;
 
     if (image_res.is_err() || audio_res.is_err()) && config.media.bail_on_empty {
-        image = image_res?;
-        audio = audio_res?;
+        image = Some(image_res?);
+        audio = Some(audio_res?);
     } else {
-        image = image_res.unwrap_or_default();
-        audio = audio_res.unwrap_or_default();
+        image = image_res.ok();
+        audio = audio_res.ok();
     }
 
     let word_pinyin = if !config.is_japanese {
@@ -135,17 +135,18 @@ pub async fn export_words(dict_db: &DictDb, words_file: &Path) -> Result<()> {
     bar.inc(0);
     for pair in word_sentences {
         let (word, sentence) = pair;
-        let ndata = package_card(dict_db, &word, sentence).await?;
-        if let Some(ndata) = ndata {
+        let ndata = package_card(dict_db, &word, sentence).await;
+        if let Ok(Some(ndata)) = ndata {
             notes.push(ndata);
             bar.inc(1);
         } else if failed_file.is_file() {
+            println!("{} {:#?}", word, ndata);
             let mut file = OpenOptions::new().append(true).open(failed_file)?;
             writeln!(file, "{}", word)?;
         }
     }
-    bar.finish();
 
+    bar.finish();
     anki_connect.bulk_add_cards(notes).await?;
 
     Ok(())
