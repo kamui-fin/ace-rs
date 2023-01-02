@@ -92,11 +92,18 @@ pub async fn package_card(
     }
 
     let word_pinyin = if !config.is_japanese {
-        format!(
-            "{}[{}]",
-            word,
-            to_pinyin_vec(word, Pinyin::with_tone_num_end).join(" ")
-        )
+        let tone_num = ['1', '2', '3', '4'];
+        let pinyin_vec = to_pinyin_vec(word, Pinyin::with_tone_num_end)
+            .iter()
+            .map(|&tone| {
+                if !tone_num.contains(&tone.chars().next_back().unwrap_or_default()) {
+                    format!("{}5", tone)
+                } else {
+                    tone.to_string()
+                }
+            })
+            .collect::<Vec<_>>();
+        format!("{}[{}]", word, pinyin_vec.join(" "),)
     } else {
         String::from("")
     };
