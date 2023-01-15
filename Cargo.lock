@@ -12,9 +12,11 @@ dependencies = [
  "directories",
  "indicatif",
  "json5",
+ "lazy_static 1.4.0",
  "notifica",
  "once_cell",
  "pinyin",
+ "pinyin-parser",
  "rand 0.8.5",
  "regex",
  "reqwest",
@@ -1506,6 +1508,16 @@ name = "pinyin"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3bd12336e3afa34152e002f57df37a7056778daa59ea542b3473b87f5fb260c4"
+
+[[package]]
+name = "pinyin-parser"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "323a236bda690141964e3ddbab5be49a1782ce250d570b97136aa0f8627da523"
+dependencies = [
+ "unicode-normalization",
+ "unicode-segmentation",
+]
 
 [[package]]
 name = "pkg-config"

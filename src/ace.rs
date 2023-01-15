@@ -9,8 +9,11 @@ use crate::{
 use anyhow::{anyhow, Context, Result};
 use fs::OpenOptions;
 use indicatif::{ProgressBar, ProgressStyle};
+use lazy_static::lazy_static;
 use pinyin::{to_pinyin_vec, Pinyin};
-use std::{convert::TryInto, io::Write};
+use pinyin_parser::PinyinParser;
+use regex::Regex;
+use std::{collections::HashMap, convert::TryInto, io::Write};
 use std::{fs, path::Path};
 
 pub fn get_config() -> Result<&'static Config> {
@@ -29,6 +32,79 @@ pub fn read_words_file(path: &Path) -> Result<Vec<(String, String)>> {
         }
     }
     Ok(word_sentence_pairs)
+}
+
+fn pinyin_from_definition(meaning: &String) -> Option<Vec<String>> {
+    lazy_static! {
+        static ref RE: Regex = Regex::new(r"\w\s\[(.*)\]").unwrap();
+    }
+    if let Some(captures) = RE.captures(meaning) {
+        let pinyin = captures.get(0).unwrap().as_str().to_string();
+        let pinyin = PinyinParser::strict(&pinyin)
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        let syllables = [
+            (1, ['ā', 'ē', 'ī', 'ō', 'ū', 'ǖ']),
+            (2, ['á', 'é', 'í', 'ó', 'ú', 'ǘ']),
+            (3, ['ǎ', 'ě', 'ǐ', 'ǒ', 'ǔ', 'ǚ']),
+            (4, ['à', 'è', 'ì', 'ò', 'ù', 'ǜ']),
+            (5, ['a', 'e', 'i', 'o', 'u', 'ü']),
+        ];
+
+        let mut map = HashMap::new();
+        let mut without_tone = HashMap::new();
+        for (tone, vowels) in syllables {
+            let vowels = vowels.to_vec();
+            for (i, vowel) in vowels.iter().enumerate() {
+                if tone != 5 {
+                    map.insert(*vowel, tone);
+                }
+                without_tone.insert(*vowel, syllables[4].1[i]);
+            }
+        }
+
+        let mut tone_numbers = vec![];
+        for pinyin_syllable in pinyin {
+            let mut num = 5;
+            let mut new_tone = String::new();
+            for c in pinyin_syllable.chars() {
+                if map.contains_key(&c) {
+                    num = map[&c];
+                    break;
+                }
+            }
+            for c in pinyin_syllable.chars() {
+                if map.contains_key(&c) {
+                    new_tone += &without_tone[&c].to_string();
+                } else {
+                    new_tone += c.to_string().as_str();
+                }
+            }
+            new_tone += &num.to_string();
+            tone_numbers.push(new_tone);
+        }
+
+        return Some(tone_numbers);
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pinyin_from_definition;
+    #[test]
+    fn it_works() {
+        assert_eq!(
+            pinyin_from_definition(&"俄罗斯 [éluósi]".to_string()),
+            Some(vec![
+                "e2".to_string(),
+                "luo2".to_string(),
+                "si5".to_string()
+            ])
+        );
+    }
 }
 
 pub async fn package_card(
@@ -93,16 +169,20 @@ pub async fn package_card(
 
     let word_pinyin = if !config.is_japanese {
         let tone_num = ['1', '2', '3', '4'];
-        let pinyin_vec = to_pinyin_vec(word, Pinyin::with_tone_num_end)
-            .iter()
-            .map(|&tone| {
-                if !tone_num.contains(&tone.chars().next_back().unwrap_or_default()) {
-                    format!("{}5", tone)
-                } else {
-                    tone.to_string()
-                }
-            })
-            .collect::<Vec<_>>();
+        let pinyin_vec = if let Some(pinyin_vec) = pinyin_from_definition(&meaning) {
+            pinyin_vec
+        } else {
+            to_pinyin_vec(word, Pinyin::with_tone_num_end)
+                .iter()
+                .map(|&tone| {
+                    if !tone_num.contains(&tone.chars().next_back().unwrap_or_default()) {
+                        format!("{}5", tone)
+                    } else {
+                        tone.to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
         format!("{}[{}]", word, pinyin_vec.join(" "),)
     } else {
         String::from("")
