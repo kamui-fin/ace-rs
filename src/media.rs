@@ -163,6 +163,15 @@ pub async fn forvo(word: &str) -> Result<Media> {
     Ok(Media { url, filename })
 }
 
+fn filter_nested_value(value: &Value) -> Vec<&[Value]> {
+    match value {
+        Value::Array(arr) if arr.len() == 3 => vec![arr.as_slice()],
+        Value::Array(arr) => arr.iter().flat_map(filter_nested_value).collect(),
+        Value::Object(obj) => obj.values().flat_map(filter_nested_value).collect(),
+        _ => vec![],
+    }
+}
+
 async fn get_fullres_urls(word: &str, is_japanese: bool) -> Result<Vec<String>> {
     // TODO: use better image source for Chinese
     let country = if is_japanese { "co.jp" } else { "com.hk" };
@@ -175,26 +184,28 @@ async fn get_fullres_urls(word: &str, is_japanese: bool) -> Result<Vec<String>> 
     let re = Regex::new(r"AF_initDataCallback\((\{key: 'ds:1'.*?)\);</script>").unwrap();
     let found = re.captures(&content);
 
-    let mut results = vec![];
     if let Some(found) = found {
         let cap = found.get(1);
         if let Some(cap) = cap {
             let json: Value = json5::from_str(cap.as_str()).unwrap();
-            let decoded = &json.get("data").unwrap()[31][0][12][2];
-
-            for full_res in decoded.as_array().unwrap() {
-                let ent = full_res.get(1);
-                if let Some(ent) = ent {
-                    let url = &ent[3][0];
-                    if !url.is_null() {
-                        results.push(url.as_str().unwrap().to_string());
+            let decoded = &json.get("data").unwrap()[56];
+            let urls: Vec<String> = filter_nested_value(decoded)
+                .into_iter()
+                .filter_map(|arr| match arr {
+                    [Value::String(string_val), Value::Number(_), Value::Number(_)]
+                        if !string_val.starts_with("https://encrypted-") =>
+                    {
+                        Some(string_val.to_string())
                     }
-                }
-            }
+                    _ => None,
+                })
+                .collect();
+
+            return Ok(urls);
         }
     }
 
-    Ok(results)
+    Ok(vec![])
 }
 
 pub async fn google_img(word: String, is_japanese: bool) -> Result<Media> {

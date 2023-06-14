@@ -15,7 +15,7 @@ Features include:
 - Definitions from [yomichan](https://foosoft.net/projects/yomichan/#dictionaries) dictionaries of your choice
   - Additional configuration supported such as priority, fallback, etc.
 - Pinyin generation
-    - Parse pinyin from dictionary entries
+  - Parse pinyin from dictionary entries
 - Frequency-based results ordering
 - Duplication handling
 - Straightforward TOML configuration
